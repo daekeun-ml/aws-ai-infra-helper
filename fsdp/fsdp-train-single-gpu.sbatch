@@ -8,12 +8,16 @@
 #SBATCH --output=logs/%x_%j.out # logfile for stdout
 #SBATCH --error=logs/%x_%j.err # logfile for stderr, remove it to merge both outputs
 #SBATCH --exclusive # job has exclusive use of the resource, no sharing
+#SBATCH --gpus-per-node=1 # Number of GPUs per node
 
 set -ex;
 
 # Add CUDA Path
-export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
 export PATH=/usr/local/cuda-12.8/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
+
+# For Checkpoint: ensuring synchronization across all nodes. If you encounter NCCL errors when saving checkpoints, adding this option will improve stability.
+export TORCH_NCCL_BLOCKING_WAIT=1
 
 ###########################
 # UV Environment Setup
