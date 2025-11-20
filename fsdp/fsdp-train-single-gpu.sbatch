@@ -113,15 +113,15 @@ declare -a TORCHRUN_ARGS=(
 )
 
 # export TORCHRUN=torchrun
-# export TRAIN_SCRIPT=${TRAIN_SCRIPT:=../src/train.py}
+# export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
 
 # UV 실행 설정
 if [ "$UV_RUN" = "1" ]; then
     export TORCHRUN="uv run torchrun"
-    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=../src/train.py}
+    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
 else
     export TORCHRUN=torchrun
-    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=../src/train.py}
+    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
 fi
 
 ############################

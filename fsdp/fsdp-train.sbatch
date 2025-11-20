@@ -102,8 +102,17 @@ declare -a TORCHRUN_ARGS=(
     --rdzv_endpoint=$(hostname)
 )
 
-export TORCHRUN=torchrun
-export TRAIN_SCRIPT=${TRAIN_SCRIPT:=../src/train.py}
+# export TORCHRUN=torchrun
+# export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
+
+# UV 실행 설정
+if [ "$UV_RUN" = "1" ]; then
+    export TORCHRUN="uv run torchrun"
+    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
+else
+    export TORCHRUN=torchrun
+    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
+fi
 
 ############################
 # llama3_2_1b Training Params ##
