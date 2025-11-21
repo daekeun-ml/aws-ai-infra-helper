@@ -62,6 +62,27 @@ else
     ADDITIONAL_LD_LIBRARY_PATH="/usr/local/cuda-${cuda_version}/lib"
 fi
 
+# Auto-detect GPU partition
+gpu_partitions=($(sinfo -h -o "%R" | grep -E '\.(g|p)[0-9]' | sed 's/\*//' || echo ""))
+
+if [ ${#gpu_partitions[@]} -eq 0 ]; then
+    echo "No GPU partition found."
+    read -p "Enter partition name (or press Enter to skip): " partition
+else
+    echo "Found GPU partitions:"
+    for i in "${!gpu_partitions[@]}"; do
+        echo "$((i+1)). ${gpu_partitions[$i]}"
+    done
+    
+    if [ ${#gpu_partitions[@]} -eq 1 ]; then
+        partition="${gpu_partitions[0]}"
+        echo "Auto-selected: $partition"
+    else
+        read -p "Select partition (1-${#gpu_partitions[@]}): " choice
+        partition="${gpu_partitions[$((choice-1))]}"
+    fi
+fi
+
 # Ask about EFA
 read -p "Use EFA (Elastic Fabric Adapter)? (y/n, default: y): " use_efa
 use_efa=${use_efa:-y}
@@ -102,6 +123,16 @@ cat >> "$output_file" << EOF
 #SBATCH --job-name=nccl-all_reduce_perf
 #SBATCH --nodes=${nodes}
 #SBATCH --ntasks-per-node ${gpus_per_node}
+EOF
+
+# Add partition if detected
+if [ -n "$partition" ]; then
+cat >> "$output_file" << EOF
+#SBATCH --partition=${partition}
+EOF
+fi
+
+cat >> "$output_file" << EOF
 #SBATCH --output %x_%j.out
 #SBATCH --error %x_%j.err
 #SBATCH --exclusive
@@ -154,6 +185,7 @@ echo "✅ NCCL test script generated: $output_file"
 echo ""
 echo "Configuration summary:"
 echo "  - Environment: $([ "$is_pcluster" == "y" ] && echo "ParallelCluster" || echo "DLAMI")"
+echo "  - Partition: ${partition:-"Not specified"}"
 echo "  - EFA: $([ "$HAS_EFA" = true ] && echo "Enabled" || echo "Disabled (TCP only)")"
 echo "  - Nodes: ${nodes}"
 echo "  - GPUs per node: ${gpus_per_node}"
