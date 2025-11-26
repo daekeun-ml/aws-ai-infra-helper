@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: copy-model-to-fsx
+spec:
+  template:
+    spec:
+      containers:
+        - name: aws-cli
+          image: amazon/aws-cli:latest
+          command: ["/bin/bash"]
+          args:
+            - -c
+            - |
+              aws s3 sync s3://jumpstart-cache-prod-us-east-2/deepseek-llm/deepseek-llm-r1-distill-qwen-1-5b/artifacts/inference-prepack/v2.0.0 /fsx/deepseek15b
+          volumeMounts:
+            - name: fsx-storage
+              mountPath: /fsx
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: "" # Replace with your region
+            - name: AWS_REGION
+              value: "" # Replace with your region
+            - name: AWS_ACCESS_KEY_ID
+              value: "" # Replace with key id
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "" # Replace with access key
+            - name: AWS_SESSION_TOKEN
+              value: "" # Replace with session token if using temporary credentials
+      volumes:
+        - name: fsx-storage
+          persistentVolumeClaim:
+            claimName: fsx-claim
+      restartPolicy: Never
+  backoffLimit: 3
