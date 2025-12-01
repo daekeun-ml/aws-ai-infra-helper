@@ -1,6 +1,6 @@
 # AWS AI Infra helper for SageMaker HyperPod and ParallelCluster
 
-AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. Slurm 기반 HPC 클러스터에서 대규모 분산 학습을 쉽게 시작할 수 있도록 지원합니다.
+AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 개요
 
@@ -21,7 +21,7 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 ## 프로젝트 구조
 
 ```
-hyperpod-helper/
+aws-ai-infra-helper/
 ├── scripts/              # 유틸리티 스크립트
 │   ├── hyperpod-connect.sh       # SSM 기반 HyperPod 연결
 │   ├── hyperpod-ssh.sh           # SSH 기반 HyperPod 연결
@@ -36,14 +36,45 @@ hyperpod-helper/
 ├── fsdp/                 # PyTorch FSDP 예제
 │   ├── fsdp-guide-ko.md          # FSDP 한국어 가이드
 │   ├── fsdp-train.sbatch         # 멀티노드 학습 스크립트
-│   └── fsdp-train-single-gpu.sbatch  # 단일 GPU 학습 스크립트
+│   ├── fsdp-train-single-gpu.sbatch  # 단일 GPU 학습 스크립트
+│   ├── pyproject.toml            # Python 프로젝트 설정
+│   └── src/
+│       ├── train.py              # FSDP 학습 스크립트
+│       ├── requirements.txt      # Python 의존성
+│       └── model_utils/          # 모델 유틸리티
 │
 ├── megatron/             # Megatron-LM 예제
 │   └── megatron-lm-guide-ko.md   # Megatron-LM 한국어 가이드
 │
-└── torchtitan/           # TorchTitan 예제
-    ├── torchtitan-guide-ko.md    # TorchTitan 한국어 가이드
-    └── torchtitan-multinode.sbatch  # 멀티노드 학습 스크립트
+├── torchtitan/           # TorchTitan 예제
+│   ├── torchtitan-guide-ko.md    # TorchTitan 한국어 가이드
+│   └── torchtitan-multinode.sbatch  # 멀티노드 학습 스크립트
+│
+├── observability/        # 모니터링 및 관찰성 도구
+│   ├── install_observability.py  # 통합 설치 스크립트
+│   ├── run-observability.sh      # 관찰성 도구 실행
+│   ├── stop_observability.py     # 관찰성 도구 중지
+│   ├── install_node_exporter.sh  # Node Exporter 설치
+│   ├── install_dcgm_exporter.sh  # DCGM Exporter 설치
+│   ├── install_efa_exporter.sh   # EFA Exporter 설치
+│   ├── install_slurm_exporter.sh # Slurm Exporter 설치
+│   ├── install_otel_collector.sh # OpenTelemetry Collector 설치
+│   ├── otel_config/              # OTel 설정 파일
+│   └── dcgm_metrics_config/      # DCGM 메트릭 설정
+│
+└── eks/                  # EKS 관련 도구 및 가이드
+    ├── training/         # EKS 학습 클러스터 설정
+    │   ├── README.md             # EKS 학습 가이드
+    │   ├── 1.create-config.sh    # 환경 설정 생성
+    │   ├── 2.setup-eks-access.sh # EKS 접근 권한 설정
+    │   ├── 3.validate-cluster.sh # 클러스터 검증
+    │   └── check-nodegroup.sh    # NodeGroup 정보 확인
+    │
+    └── inference/        # EKS 추론 엔드포인트
+        ├── README.md             # 추론 배포 가이드
+        ├── deploy_S3_inference_operator.yaml
+        ├── deploy_fsx_lustre_inference_operator.yaml
+        └── copy_to_fsx_lustre.yaml
 ```
 
 ## 빠른 시작
