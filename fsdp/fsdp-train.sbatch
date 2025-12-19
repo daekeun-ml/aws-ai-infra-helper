@@ -11,27 +11,36 @@
 
 set -ex;
 
+# For Checkpoint: ensuring synchronization across all nodes. If you encounter NCCL errors when saving checkpoints, adding this option will improve stability.
+export TORCH_NCCL_BLOCKING_WAIT=1
+
 ###########################
-# 
+# UV Environment Setup
 ###########################
-if [ -f "$(pwd)/env/bin/activate" ]; then
-    echo "Activating virtual environment..."
-    source $(pwd)/env/bin/activate
+if [ -f "$(pwd)/.venv/pyvenv.cfg" ]; then
+    echo "Activating uv virtual environment..."
+    source $(pwd)/.venv/bin/activate
     echo "Virtual environment activated: $VIRTUAL_ENV"
+elif [ -f "$(pwd)/pyproject.toml" ]; then
+    echo "Using uv run for project..."
+    export UV_RUN=1
 else
-    echo "⚠️  Virtual environment not found! Please update the path."
+    echo "⚠️  UV environment not found! Please run 'uv sync' first."
     echo "Current working directory: $(pwd)"
-    echo "Available environments:"
-    find /fsx -name "activate" -type f 2>/dev/null | head -5
-    find /shared -name "activate" -type f 2>/dev/null | head -5
 fi
 
-# ENvironment Check
+# Environment Check
 echo "=== Environment Check ==="
-echo "Python: $(which python)"
-echo "Torchrun: $(which torchrun 2>/dev/null || echo 'Not found')"
-echo "PyTorch version: $(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo 'PyTorch not found')"
-echo "CUDA available: $(python -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'Cannot check CUDA')"
+if [ "$UV_RUN" = "1" ]; then
+    echo "Python: $(uv run which python)"
+    echo "PyTorch version: $(uv run python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo 'PyTorch not found')"
+    echo "CUDA available: $(uv run python -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'Cannot check CUDA')"
+else
+    echo "Python: $(which python)"
+    echo "PyTorch version: $(python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo 'PyTorch not found')"
+    echo "CUDA available: $(python -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'Cannot check CUDA')"
+fi
+
 echo "Number of nodes: $SLURM_JOB_NUM_NODES"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Master node: $(hostname)"
@@ -41,7 +50,7 @@ echo "=========================="
 ###### User Variables #####
 ###########################
 
-GPUS_PER_NODE=4 # 4 for G5.12x, 8 for P4/P5
+GPUS_PER_NODE=8 # 4 for G5.12x, 8 for P4/P5
 
 ###############################
 ###### Container Variable #####
