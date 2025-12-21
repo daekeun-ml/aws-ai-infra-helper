@@ -13,7 +13,7 @@ import tqdm
 import logging
 from torch.distributed.fsdp import BackwardPrefetch, ShardingStrategy
 from transformers import AutoTokenizer
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 
 from model_utils.concat_dataset import ConcatTokensDataset
 
@@ -24,7 +24,8 @@ g_gigabyte = 1024**3
 
 def setup():
     # initialize the process group
-    dist.init_process_group("nccl")
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    dist.init_process_group("nccl", device_id=local_rank)
 
 
 def cleanup():
@@ -450,7 +451,8 @@ class AnnealingLR:  # pylint: disable=too-many-instance-attributes
                 cls_value == sd_value
             ), f"AnnealingLR: class input value and checkpoint values for {name} do not match"
         if self.rank == 0:
-            _logger.info(f" > using checkpoint value {sd_value} for {name}")
+            logger = get_logger()
+            logger.info(f" > using checkpoint value {sd_value} for {name}")
         return sd_value
 
     def load_state_dict(self, sd):
@@ -503,10 +505,30 @@ def create_streaming_dataloader(dataset,
                       batch_size=1,
                       max_context_width=4096,
                       workers=4,
-                      split=None):
-    print(f"dataset={dataset}, name={name}")
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer,legacy=False)
-    data = load_dataset(dataset, name=name, streaming=True, split=split).shuffle(42+global_rank)
+                      split=None,
+                      local_dataset=False):
+    print(f"dataset={dataset}, name={name}, local_dataset={local_dataset}")
+    
+    # Only rank 0 loads tokenizer and dataset to avoid rate limiting
+    if global_rank == 0:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer, legacy=False)
+        if local_dataset:
+            data = load_from_disk(dataset)[split]
+        else:
+            data = load_dataset(dataset, name=name, streaming=True, split=split).shuffle(42+global_rank)
+    
+    # Synchronize all processes
+    if dist.is_initialized():
+        dist.barrier()
+    
+    # Other ranks load after rank 0 is done
+    if global_rank != 0:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer, legacy=False)
+        if local_dataset:
+            data = load_from_disk(dataset)[split]
+        else:
+            data = load_dataset(dataset, name=name, streaming=True, split=split).shuffle(42+global_rank)
+    
     train_concat_dataset = ConcatTokensDataset(data, tokenizer, max_context_width, True)
     train_dataloader = DataLoader(train_concat_dataset,
                                        batch_size=batch_size,

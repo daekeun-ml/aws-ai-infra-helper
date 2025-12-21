@@ -146,8 +146,8 @@ fi
 MODEL_TYPE="qwen3_0_6b"
 TOKENIZER="Qwen/Qwen3-0.6B"
 
-DATASET="/fsx/data/wikitext-2"
-LOCAL_DATASET=true
+DATASET="/fsx/data/pretrain/wikitext-2"
+LOCAL_DATASET=true  # Set to false for HuggingFace datasets
 
 # DATASET="allenai/c4"
 # DATASET_CONFIG_NAME="en"

@@ -215,11 +215,11 @@ fsdp2/logs/
 fsdp2/checkpoints/
 fsdp2/.venv/
 
-
 deepspeed/logs/
 deepspeed/checkpoints/
 deepspeed/.venv/
 
 deepspeed2/
 
+stack-env-vars.sh
 uv.lock

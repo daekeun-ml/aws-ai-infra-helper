@@ -7,6 +7,8 @@ import pickle
 import statistics
 import time
 import warnings
+import logging
+import sys
 from pathlib import Path
 
 import torch
@@ -17,17 +19,19 @@ import torch.distributed.checkpoint as dist_cp
 from torch.distributed.checkpoint.optimizer import load_sharded_optimizer_state_dict
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.fully_sharded_data_parallel import StateDictType
-from model_utils.train_utils import get_logger
 
-
-logger = get_logger()
+# Use same logging setup as train.py
+logging.basicConfig(format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", level=logging.INFO, stream=sys.stdout)
+logger = logging.getLogger(__name__)
 
 def save_checkpoint(model, optimizer, scheduler, user_content, root_dir, sub_dir):
     torch.cuda.empty_cache()
 
     save_dir = os.path.join(root_dir, sub_dir)
+    total_steps = user_content["total_steps"]
+    
     if dist.get_rank() == 0:
-        logger.info("Writing checkpoint to {0}.".format(save_dir))
+        logger.info("Step %d: Writing checkpoint to %s", total_steps, save_dir)
     
     with FSDP.state_dict_type(
             model, 
@@ -39,13 +43,13 @@ def save_checkpoint(model, optimizer, scheduler, user_content, root_dir, sub_dir
             "total_steps": user_content["total_steps"],
             "start_batch_index": user_content["start_batch_index"],
         }
-        dist_cp.save_state_dict(
+        dist_cp.save(
                     state_dict=state_dict,
                     storage_writer=dist_cp.FileSystemWriter(save_dir)
                 )
     dist.barrier()
     if dist.get_rank() == 0:
-        logger.info("Completed checkpoint.")
+        logger.info("Step %d: Completed checkpoint at %s", total_steps, save_dir)
 
 def get_last_checkpoint(checkpoint_paths, model_type):
     steps = [int(re.findall(r'\d+steps', checkpoint.stem)[0].replace('steps','')) \
@@ -88,27 +92,31 @@ def load_checkpoint(model, optimizer, scheduler, checkpoint_dir, model_type, dev
             "start_batch_index": 0,
             # cannot load the optimizer state_dict together with the model state_dict
         }
-        dist_cp.load_state_dict(
+        dist_cp.load(
             state_dict=state_dict,
             storage_reader=dist_cp.FileSystemReader(last_checkpoint),
         )
         model.load_state_dict(state_dict["model"])
         scheduler.load_state_dict(state_dict["scheduler"])
+        total_steps = state_dict["total_steps"]
+        start_batch_index = state_dict["start_batch_index"]
+        
         if dist.get_rank() == 0:
-            logger.info("Loaded model state from disk")
+            logger.info("Loaded model and scheduler from %s (step %d)", last_checkpoint, total_steps)
             logger.info("Loading optimizer state from disk")
-        optim_state = load_sharded_optimizer_state_dict(
-            model_state_dict=state_dict["model"],
-            optimizer_key="optim",
+        # Load optimizer state using new API
+        optim_state_dict = {"optim": optimizer.state_dict()}
+        dist_cp.load(
+            state_dict=optim_state_dict,
             storage_reader=dist_cp.FileSystemReader(last_checkpoint),
         )
         if dist.get_rank() == 0:
-            logger.info("Loaded and sharded optimizer state from disk")
+            logger.info("Loaded and sharded optimizer state from %s", last_checkpoint)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             # UserWarning to replace all_gather_base with all_gather_into_tensor floods the logs
             flattened_osd = FSDP.optim_state_dict_to_load(
-                model, optimizer, optim_state["optim"]
+                model, optimizer, optim_state_dict["optim"]
             )
 
         if dist.get_rank() == 0:
@@ -116,7 +124,7 @@ def load_checkpoint(model, optimizer, scheduler, checkpoint_dir, model_type, dev
         optimizer.load_state_dict(flattened_osd)
     dist.barrier()
     if dist.get_rank() == 0:
-        logger.info("Checkpoint loaded from %s.", last_checkpoint)
+        logger.info("Checkpoint fully loaded from %s (resuming from step %d)", last_checkpoint, total_steps)
     return (
         model,
         optimizer,

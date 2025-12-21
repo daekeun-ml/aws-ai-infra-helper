@@ -98,6 +98,8 @@ export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
 ## Set HuggingFace metadata timeout (in seconds) for large clusters
 export HF_HUB_ETAG_TIMEOUT=60
+export HF_HUB_DISABLE_PROGRESS_BARS=1
+export HF_HUB_DISABLE_TELEMETRY=1
 
 ########################
 ####### Container ######
@@ -125,16 +127,36 @@ declare -a TORCHRUN_ARGS=(
     --rdzv_endpoint=$(hostname)
 )
 
-# export TORCHRUN=torchrun
-# export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
-
 # UV 실행 설정
 if [ "$UV_RUN" = "1" ]; then
     export TORCHRUN="uv run torchrun"
-    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
 else
     export TORCHRUN=torchrun
-    export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
+fi
+
+export TRAIN_SCRIPT=${TRAIN_SCRIPT:=./src/train.py}
+
+############################
+# Dataset Configuration    #
+############################
+
+# Set dataset configuration
+DATASET_PATH=${DATASET_PATH:-"allenai/c4"}
+DATASET_CONFIG=${DATASET_CONFIG:-"en"}
+USE_LOCAL_DATASET=${USE_LOCAL_DATASET:-false}
+
+DATASET_PATH="/fsx/data/pretrain/wikitext-2"
+USE_LOCAL_DATASET="true"
+
+# Build dataset arguments
+DATASET_ARGS=(
+    --dataset=$DATASET_PATH
+)
+
+if [ "$USE_LOCAL_DATASET" = "true" ]; then
+    DATASET_ARGS+=(--local_dataset)
+else
+    DATASET_ARGS+=(--dataset_config_name=$DATASET_CONFIG)
 fi
 
 ############################
@@ -154,8 +176,7 @@ declare -a TRAINING_ARGS=(
     --validation_freq=100
     --max_steps=100
     --checkpoint_dir=./checkpoints
-    --dataset=allenai/c4
-    --dataset_config_name=en
+    "${DATASET_ARGS[@]}"
     --resume_from_checkpoint=./checkpoints
     --train_batch_size=1
     --val_batch_size=1

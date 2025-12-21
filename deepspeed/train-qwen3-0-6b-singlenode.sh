@@ -67,7 +67,7 @@ DATASET="allenai/c4"
 DATASET_CONFIG_NAME="en"  # Used for HuggingFace datasets (e.g., allenai/c4 -> en)
 LOCAL_DATASET=false  # Set to false for HuggingFace datasets
 
-# DATASET="/fsx/data/wikitext-2"
+# DATASET="/fsx/data/pretrain/wikitext-2"
 # LOCAL_DATASET=true
 
 MAX_STEPS=100
