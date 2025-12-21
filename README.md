@@ -3,8 +3,12 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.2
+- **데이터셋 관리 개선**: 한국어 Q&A 데이터셋(glan-qna-kr) 등 다양한 데이터셋 추가, 로컬 저장 및 FSx Lustre DRA 동기화 기능 지원
+- **데이터셋 용도별 분류**: Pre-training과 SFT(Supervised Fine-tuning) 용도로 구분하여 체계적 관리
+- **새로운 유틸리티 스크립트**: CloudFormation 스택 관리용 `export-stack-outputs.sh`와 FSx Lustre DRA 생성용 `create-dra.sh` 추가
 
-### v1.0.1 (2025-12-21)
+### v1.0.1
 - **FSDP2 지원 추가**: PyTorch 2.5+ FSDP2 기반 분산 학습 예제 및 가이드
 - **DeepSpeed 통합**: DeepSpeed ZeRO 기반 대규모 모델 학습 샘플 추가
 - **Qwen 3 0.6B 테스트**: 최신 Qwen 3 0.6B 모델 학습 및 추론 예제 (p4/p5 인스턴스 권장)
