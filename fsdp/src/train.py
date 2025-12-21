@@ -4,6 +4,7 @@
 import datetime
 import functools
 import math
+import os
 import re
 import time
 
@@ -90,9 +91,17 @@ def train(
     ):
     model.train()
     for index in range(args.epochs):
+        if global_rank == 0:
+            logger.info("Starting epoch %d/%d", index + 1, args.epochs)
         for batch_idx, input_data in enumerate(train_dataloader):
             if batch_idx < start_batch_index:
                 continue
+            if total_steps >= args.max_steps:
+                if global_rank == 0:
+                    logger.info("Reached max_steps (%d), stopping training", args.max_steps)
+                    logger.info("Training completed successfully")
+                return
+            
             optimizer.zero_grad(set_to_none=True)
             step_start = time.time()
             loss = model(input_ids=input_data, attention_mask=None, labels=input_data)["loss"]
@@ -109,8 +118,9 @@ def train(
             current_lr = lr_scheduler.get_lr()
             if global_rank==0 and batch_idx%args.logging_freq==0:
                 logger.info(
-                    "Batch %d Loss: %.5f, Speed: %.2f samples/sec, lr: %.6f",  # pylint: disable=line-too-long
-                    batch_idx,
+                    "Epoch %d Step %d Loss: %.5f, Speed: %.2f samples/sec, lr: %.6f",  # pylint: disable=line-too-long
+                    index + 1,
+                    total_steps,
                     loss_scalar,
                     throughput,
                     current_lr,
@@ -122,8 +132,9 @@ def train(
                 model = model.train()
                 if global_rank == 0:
                     logger.info(
-                            "Batch %d Validation loss: %s",
-                            batch_idx,
+                            "Epoch %d Step %d Validation loss: %s",
+                            index + 1,
+                            total_steps,
                             val_loss,
                         )
             if args.checkpoint_dir and not total_steps % args.checkpoint_freq:
@@ -144,12 +155,17 @@ def train(
                     args.checkpoint_dir,
                     sub_dir,
                 )
-            if total_steps >= args.max_steps:
-                break
-            
+        # Reset start_batch_index for next epoch
+        start_batch_index = 0
+    
+    # Training completed all epochs
+    if global_rank == 0:
+        logger.info("Completed all %d epochs, training finished", args.epochs)
+        logger.info("Training completed successfully")
 
 def main(args):
-    dist.init_process_group()
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    dist.init_process_group(device_id=local_rank)
     global_rank = dist.get_rank()
     device = global_rank % torch.cuda.device_count()
     world_size = dist.get_world_size()
@@ -263,28 +279,36 @@ def main(args):
                                                    args.tokenizer, 
                                                    name=args.dataset_config_name, 
                                                    batch_size=args.train_batch_size, 
-                                                   split='train')
+                                                   split='train',
+                                                   local_dataset=args.local_dataset)
     
     val_dataloader = create_streaming_dataloader(args.dataset, 
                                                   args.tokenizer, 
                                                   name=args.dataset_config_name, 
                                                   batch_size=args.train_batch_size, 
-                                                  split='validation')
+                                                  split='validation',
+                                                  local_dataset=args.local_dataset)
     
-    train(model, 
-          optimizer, 
-          train_dataloader,
-          val_dataloader,
-          lr_scheduler, 
-          model_config, 
-          num_params, 
-          args, 
-          global_rank, 
-          world_size,
-          total_steps,
-          start_batch_index)
-  
-    dist.destroy_process_group()
+    try:
+        train(model, 
+              optimizer, 
+              train_dataloader,
+              val_dataloader,
+              lr_scheduler, 
+              model_config, 
+              num_params, 
+              args, 
+              global_rank, 
+              world_size,
+              total_steps,
+              start_batch_index)
+        
+        if global_rank == 0:
+            logger.info("All training processes completed")
+    finally:
+        if global_rank == 0:
+            logger.info("Cleaning up distributed processes")
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     args, _ = parse_args()

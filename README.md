@@ -30,9 +30,12 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 
 ```
 aws-ai-infra-helper/
+├── prepare-datasets.py   # 데이터셋 준비 및 S3/FSx 동기화 스크립트
 ├── scripts/              # 유틸리티 스크립트
 │   ├── hyperpod-connect.sh       # SSM 기반 HyperPod 연결
 │   ├── hyperpod-ssh.sh           # SSH 기반 HyperPod 연결
+│   ├── export-stack-outputs.sh  # CloudFormation 스택 출력 추출
+│   ├── create-dra.sh             # FSx Lustre DRA 생성
 │   ├── check-fsx.sh              # FSx for Lustre 검증
 │   ├── check-munged.sh           # Slurm 연결 검증
 │   ├── check-pyxis-enroot.sh     # Pyxis/Enroot 설치 검증
@@ -144,6 +147,40 @@ sudo ./scripts/install-pyxis-enroot.sh
 # NCCL 및 EFA 라이브러리 설치
 ./scripts/install-nccl-efa.sh
 ```
+
+### 4. 로컬 데이터셋 준비 (선택사항)
+
+HyperPod 클러스터에서 로컬 데이터셋을 사용하려면:
+
+```bash
+# 1. 스택 정보 추출 및 환경변수 설정
+./scripts/export-stack-outputs.sh hyperpod-cluster-name
+source stack-env-vars.sh
+
+# 2. FSx Lustre DRA (Data Repository Association) 생성
+./scripts/create-dra.sh
+
+# 3. 데이터셋 다운로드 및 S3/FSx 동기화
+python3 prepare-datasets.py
+```
+
+이 과정을 통해 선택한 데이터셋이 S3와 FSx Lustre에 자동으로 동기화됩니다.
+
+**사용 가능한 데이터셋:**
+
+**Pre-training 용도:**
+- wikitext-2: Language modeling dataset (~36k samples)
+- wikitext-103: Large language modeling dataset (limited to 180k)
+
+**Supervised Fine-tuning (SFT) 용도:**
+- emotion: Emotion classification with 6 emotions (~20k samples)  
+- sst2: Stanford Sentiment Treebank binary classification (~67k samples)
+- cola: Corpus of Linguistic Acceptability (~8.5k samples)
+- rte: Recognizing Textual Entailment (~2.5k samples)
+- imdb: Movie review sentiment analysis (~50k samples)
+- ag_news: News categorization into 4 classes (~120k samples)
+- yelp_polarity: Yelp review sentiment analysis (limited to 100k)
+- glan-qna-kr: Korean Q&A dataset (limited to 150k samples)
 
 ## 분산 학습 프레임워크
 

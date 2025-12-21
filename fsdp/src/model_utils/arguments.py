@@ -152,6 +152,8 @@ def parse_args():  # pylint: disable=too-many-statements
         title="io", description="location for input and output")
     io_grp.add_argument("--dataset", type=str, default="allenai/c4")
     io_grp.add_argument("--dataset_config_name", type=str, default="en")
+    io_grp.add_argument("--local_dataset", action="store_true", 
+                        help="Load dataset from local disk using load_from_disk")
     io_grp.add_argument("--tokenizer",
                         type=str,
                         default="EleutherAI/gpt-neox-20b")
