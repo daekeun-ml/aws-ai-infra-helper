@@ -2,7 +2,7 @@
 
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
-## What's New
+## 🚀 What's New
 
 ### v1.0.1 (2025-12-21)
 - **FSDP2 지원 추가**: PyTorch 2.5+ FSDP2 기반 분산 학습 예제 및 가이드
@@ -42,17 +42,34 @@ aws-ai-infra-helper/
 │   └── generate-nccl-test.sh     # NCCL 테스트 생성
 │
 ├── fsdp/                 # PyTorch FSDP 예제
-│   ├── fsdp-guide-ko.md          # FSDP 한국어 가이드
-│   ├── fsdp-train.sbatch         # 멀티노드 학습 스크립트
-│   ├── fsdp-train-single-gpu.sbatch  # 단일 GPU 학습 스크립트
-│   ├── pyproject.toml            # Python 프로젝트 설정
+│   ├── README.md                 # FSDP 한국어 가이드
+│   ├── train-fsdp.sbatch         # 멀티노드 학습 스크립트
+│   ├── train-fsdp-singlegpu.sbatch  # 단일 GPU 학습 스크립트
 │   └── src/
 │       ├── train.py              # FSDP 학습 스크립트
 │       ├── requirements.txt      # Python 의존성
 │       └── model_utils/          # 모델 유틸리티
 │
+├── fsdp2/                # PyTorch FSDP2 예제 (NEW)
+│   ├── README.md                 # FSDP2 한국어 가이드
+│   ├── train-fsdp2.sbatch        # 멀티노드 학습 스크립트
+│   ├── train-fsdp2-singlenode.sh # 단일 노드 학습 스크립트
+│   └── src/
+│       ├── train_fsdp2.py        # FSDP2 학습 스크립트
+│       └── model_utils/          # 모델 유틸리티
+│
+├── deepspeed/            # DeepSpeed 예제 (NEW)
+│   ├── README.md                 # DeepSpeed 한국어 가이드
+│   ├── train-qwen3-0-6b.sbatch   # Qwen 3 0.6B 학습 스크립트
+│   ├── train-qwen3-0-6b-singlenode.sh  # 단일 노드 학습
+│   ├── ds_config.json            # DeepSpeed 설정
+│   └── src/
+│       ├── train_deepspeed.py    # DeepSpeed 학습 스크립트
+│       └── model_utils/          # 모델 유틸리티
+│
 ├── megatron/             # Megatron-LM 예제
-│   └── megatron-lm-guide-ko.md   # Megatron-LM 한국어 가이드
+│   ├── megatron-lm-slurm-guide-ko.md  # Slurm 가이드
+│   └── megatron-lm-eks-guide-ko.md    # EKS 가이드
 │
 ├── torchtitan/           # TorchTitan 예제
 │   ├── torchtitan-guide-ko.md    # TorchTitan 한국어 가이드
@@ -145,13 +162,59 @@ PyTorch 네이티브 분산 학습 프레임워크로, 메모리 효율적인 �
 cd fsdp
 
 # 단일 GPU 테스트
-sbatch fsdp-train-single-gpu.sbatch
+sbatch train-fsdp-singlegpu.sbatch
 
 # 멀티노드 학습
-sbatch fsdp-train.sbatch
+sbatch train-fsdp.sbatch
 ```
 
-**상세 가이드:** [fsdp/fsdp-guide-ko.md](fsdp/fsdp-guide-ko.md)
+**상세 가이드:** [fsdp/README.md](fsdp/README.md)
+
+### FSDP2 (Fully Sharded Data Parallel v2)
+
+PyTorch 2.5+에서 도입된 차세대 FSDP로, 향상된 성능과 메모리 효율성을 제공합니다.
+
+**주요 특징:**
+- 개선된 통신 오버헤드 및 메모리 사용량
+- 더 나은 컴파일러 최적화 지원
+- 향상된 체크포인트 및 재시작 기능
+- Float8 양자화 지원
+
+**시작하기:**
+```bash
+cd fsdp2
+
+# 단일 노드 학습
+./train-fsdp2-singlenode.sh
+
+# 멀티노드 학습
+sbatch train-fsdp2.sbatch
+```
+
+**상세 가이드:** [fsdp2/README.md](fsdp2/README.md)
+
+### DeepSpeed
+
+Microsoft에서 개발한 대규모 모델 학습 최적화 라이브러리입니다.
+
+**주요 특징:**
+- ZeRO (Zero Redundancy Optimizer) 단계별 최적화
+- 메모리 효율적인 attention 구현
+- CPU/NVMe offloading 지원
+- 자동 혼합 정밀도 및 gradient clipping
+
+**시작하기:**
+```bash
+cd deepspeed
+
+# Qwen 3 0.6B 단일 노드 학습
+./train-qwen3-0-6b-singlenode.sh
+
+# Qwen 3 0.6B 멀티노드 학습
+sbatch train-qwen3-0-6b.sbatch
+```
+
+**상세 가이드:** [deepspeed/README.md](deepspeed/README.md)
 
 ### Megatron-LM
 
@@ -174,7 +237,7 @@ sbatch 1.data-preprocessing.sbatch
 sbatch 2.distributed-training.sbatch
 ```
 
-**상세 가이드:** [megatron/megatron-lm-guide-ko.md](megatron/megatron-lm-guide-ko.md)
+**상세 가이드:** [megatron/megatron-lm-slurm-guide-ko.md](megatron/megatron-lm-slurm-guide-ko.md)
 
 ### TorchTitan
 
