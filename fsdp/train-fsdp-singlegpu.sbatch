@@ -8,11 +8,24 @@
 #SBATCH --output=logs/%x_%j.out # logfile for stdout
 #SBATCH --error=logs/%x_%j.err # logfile for stderr, remove it to merge both outputs
 #SBATCH --exclusive # job has exclusive use of the resource, no sharing
+#SBATCH --gpus-per-node=1 # Number of GPUs per node
 
 set -ex;
 
+# CUDA Version Setup
+CUDA_VERSION=${CUDA_VERSION:-"12.8"}  # Default to 12.8
+if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
+    export CUDA_HOME="/usr/local/cuda-${CUDA_VERSION}"
+    export PATH="$CUDA_HOME/bin:$PATH"
+    export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$LD_LIBRARY_PATH"
+    echo "Using CUDA version: $CUDA_VERSION"
+fi
+
 # For Checkpoint: ensuring synchronization across all nodes. If you encounter NCCL errors when saving checkpoints, adding this option will improve stability.
 export TORCH_NCCL_BLOCKING_WAIT=1
+
+# Change to the parent directory where .venv is located
+cd ..
 
 ###########################
 # UV Environment Setup
@@ -28,6 +41,9 @@ else
     echo "⚠️  UV environment not found! Please run 'uv sync' first."
     echo "Current working directory: $(pwd)"
 fi
+
+# Change back to fsdp directory for training
+cd fsdp
 
 # Environment Check
 echo "=== Environment Check ==="
@@ -50,7 +66,7 @@ echo "=========================="
 ###### User Variables #####
 ###########################
 
-GPUS_PER_NODE=8 # 4 for G5.12x, 8 for P4/P5
+GPUS_PER_NODE=1 # 4 for G5.12x, 8 for P4/P5
 
 ###############################
 ###### Container Variable #####
@@ -68,17 +84,17 @@ export FSX_MOUNT=$(pwd):$DATA_PATH
 ## For G4dn and other G5, comment out all
 #export FI_LOG_LEVEL=warn
 export NCCL_DEBUG=INFO
-export FI_PROVIDER=efa
-export FI_EFA_USE_HUGE_PAGE=0    # Set to 0 when you see os.fork() causes OSError: Cannot allocate memory.  Disabling huge page causes minor performance hit.
+# export FI_PROVIDER=efa
+# export FI_EFA_USE_HUGE_PAGE=0    # Set to 0 when you see os.fork() causes OSError: Cannot allocate memory.  Disabling huge page causes minor performance hit.
 ## Switching SYNC_MEMOPS to zero can boost throughput with FSDP
 ## Disables CU_POINTER_ATTRIBUTE_SYNC_MEMOPS
 ## Reduces memory synchronizations
 ## https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__UNIFIED.html
-export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
+#export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 # LD_PRELOAD is required for PyTorch to find the NCCL library
 # This path assumes you are using the Deep Learning AMI
 # If you are not using the DLAMI, you may need to update this path
-export LD_PRELOAD=/usr/local/cuda-12.8/lib/libnccl.so
+export LD_PRELOAD=/usr/local/cuda-${CUDA_VERSION}/lib/libnccl.so
 export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
 ## Set HuggingFace metadata timeout (in seconds) for large clusters
@@ -128,17 +144,17 @@ fi
 ############################
 
 declare -a TRAINING_ARGS=(
-    --max_context_width=8192
+    --max_context_width=2048
     --num_key_value_heads=2
-    --intermediate_size=8192
-    --hidden_width=2048
-    --num_layers=16
-    --num_heads=32
+    --intermediate_size=2048
+    --hidden_width=1024
+    --num_layers=8
+    --num_heads=16
     --model_type=llama_v3
     --tokenizer=hf-internal-testing/llama-tokenizer
     --checkpoint_freq=50
     --validation_freq=100
-    --max_steps=100
+    --max_steps=200
     --checkpoint_dir=./checkpoints
     --dataset=allenai/c4
     --dataset_config_name=en
@@ -154,7 +170,6 @@ if [ -d "/opt/sagemaker_cluster" ]; then
     echo "Detected Hyperpod cluster.. enabling --auto-resume=1"
     AUTO_RESUME="--auto-resume=1"
 fi
-
 
 echo "Executing command:"
 echo "srun ${AUTO_RESUME} -l ${ARGS[@]} ${TORCHRUN} ${TORCHRUN_ARGS[@]} $TRAIN_SCRIPT ${TRAINING_ARGS[@]}"

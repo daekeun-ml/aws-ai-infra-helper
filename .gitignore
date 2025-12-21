@@ -140,6 +140,7 @@ celerybeat.pid
 .venv
 env/
 venv/
+.venv/
 ENV/
 env.bak/
 venv.bak/
@@ -209,3 +210,16 @@ __marimo__/
 fsdp/logs/
 fsdp/checkpoints/
 fsdp/.venv/
+
+fsdp2/logs/
+fsdp2/checkpoints/
+fsdp2/.venv/
+
+
+deepspeed/logs/
+deepspeed/checkpoints/
+deepspeed/.venv/
+
+deepspeed2/
+
+uv.lock

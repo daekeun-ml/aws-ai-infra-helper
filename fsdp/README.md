@@ -33,19 +33,6 @@ FSDP(Fully Sharded Data Parallel)는 PyTorch에서 제공하는 분산 학습 �
 ### 필수 패키지 설치
 
 ```bash
-# PyTorch 및 관련 패키지
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# HuggingFace 및 데이터셋
-pip install transformers datasets tokenizers accelerate
-
-# 모니터링 및 유틸리티
-pip install wandb tensorboard tqdm
-```
-
-또는 UV를 사용하는 경우:
-
-```bash
 # UV 설치
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
@@ -80,12 +67,12 @@ export HF_HUB_ETAG_TIMEOUT=60
 
 ## 단일 GPU 학습
 
-작은 모델이나 테스트를 위해 단일 GPU에서 학습하는 경우 `fsdp-train-single-gpu.sbatch` 스크립트를 사용합니다.
+작은 모델이나 테스트를 위해 단일 GPU에서 학습하는 경우 `train-fsdp-singlegpu.sbatch` 스크립트를 사용합니다.
 
 ### 실행 방법
 
 ```bash
-sbatch fsdp-train-single-gpu.sbatch
+sbatch train-fsdp-singlegpu.sbatch
 ```
 
 ### 주요 설정
@@ -110,12 +97,12 @@ fi
 
 ## 멀티노드 분산 학습
 
-대규모 모델 학습을 위해 여러 노드에 걸쳐 FSDP를 사용하는 경우 `fsdp-train.sbatch` 스크립트를 사용합니다.
+대규모 모델 학습을 위해 여러 노드에 걸쳐 FSDP를 사용하는 경우 `train-fsdp.sbatch` 스크립트를 사용합니다.
 
 ### 실행 방법
 
 ```bash
-sbatch fsdp-train.sbatch
+sbatch train-fsdp.sbatch
 ```
 
 ### 주요 설정
@@ -283,19 +270,6 @@ tensorboard --logdir ./tensorboard_logs --port 6006
 ssh -L 6006:localhost:6006 user@head-node
 ```
 
-### Weights & Biases
-
-학습 스크립트에서 wandb를 사용하는 경우:
-
-```bash
-# API 키 설정
-export WANDB_API_KEY=<your-api-key>
-
-# 프로젝트 및 엔티티 설정
-export WANDB_PROJECT=fsdp-training
-export WANDB_ENTITY=your-team
-```
-
 ## 성능 최적화
 
 ### 1. Activation Checkpointing
@@ -325,25 +299,7 @@ apply_activation_checkpointing(
     check_fn=lambda submodule: isinstance(submodule, TransformerBlock),
 )
 ```
-
-### 2. 혼합 정밀도 학습
-
-FP16 또는 BF16을 사용하여 메모리와 연산 속도 개선:
-
-```python
-from torch.distributed.fsdp import MixedPrecision
-
-# BF16 혼합 정밀도
-mp_policy = MixedPrecision(
-    param_dtype=torch.bfloat16,
-    reduce_dtype=torch.bfloat16,
-    buffer_dtype=torch.bfloat16,
-)
-
-model = FSDP(model, mixed_precision=mp_policy)
-```
-
-### 3. CPU Offloading
+### 32. CPU Offloading
 
 GPU 메모리가 부족한 경우 파라미터를 CPU로 오프로드:
 
@@ -358,7 +314,7 @@ model = FSDP(
 
 단, CPU offloading은 학습 속도를 크게 저하시킬 수 있으므로 신중히 사용해야 합니다.
 
-### 4. 통신 최적화
+### 3. 통신 최적화
 
 ```bash
 # Gradient as bucket view (메모리 효율)
@@ -367,16 +323,6 @@ export TORCH_DISTRIBUTED_DEBUG=DETAIL
 # NCCL 최적화
 export NCCL_ASYNC_ERROR_HANDLING=1
 export NCCL_BUFFSIZE=2097152
-```
-
-### 5. 배치 크기 최적화
-
-GPU 메모리 활용도를 최대화하기 위해 배치 크기 조정:
-
-```bash
-# Gradient accumulation을 통한 효과적인 배치 크기 증가
---train_batch_size=1 \
---gradient_accumulation_steps=4  # 효과적인 배치: 1 * 4 = 4
 ```
 
 ## 모델 크기별 권장 설정
@@ -420,31 +366,6 @@ NODES=2-8
 --cpu_offload=1  # 필요시
 GPUS_PER_NODE=8
 NODES=8-32
-```
-
-## 체크포인트 관리
-
-### 체크포인트 저장
-
-FSDP는 분산 체크포인트를 지원하며, 각 랭크가 자신의 샤드를 저장합니다:
-
-```python
-from torch.distributed.fsdp import FullStateDictConfig, StateDictType
-
-# Full state dict 저장 (rank 0만 전체 모델 저장)
-save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
-    cpu_state = model.state_dict()
-    if rank == 0:
-        torch.save(cpu_state, "checkpoint.pt")
-```
-
-### 체크포인트에서 재개
-
-스크립트에서 체크포인트 경로 지정:
-
-```bash
---resume_from_checkpoint=./checkpoints/step_1000
 ```
 
 ## 문제 해결
@@ -593,18 +514,8 @@ prof.export_chrome_trace("trace.json")
 ### 1. 환경 설정
 
 ```bash
-# 작업 디렉토리 생성
-mkdir -p ~/fsdp-training
-cd ~/fsdp-training
-
 # 가상환경 생성 (UV 사용)
-uv init
-uv add torch transformers datasets
-
-# 또는 pip 사용
-python -m venv env
-source env/bin/activate
-pip install torch transformers datasets
+uv sync
 ```
 
 ### 2. 단일 GPU 테스트
@@ -614,7 +525,7 @@ pip install torch transformers datasets
 mkdir -p logs
 
 # 단일 GPU 학습 제출
-sbatch fsdp-train-single-gpu.sbatch
+sbatch train-fsdp-singlegpu.sbatch
 
 # 로그 확인
 tail -f logs/llama3_2_1b-FSDP_*.out
@@ -624,33 +535,13 @@ tail -f logs/llama3_2_1b-FSDP_*.out
 
 ```bash
 # 멀티노드 학습 제출
-sbatch fsdp-train.sbatch
+sbatch train-fsdp.sbatch
 
 # 작업 상태 확인
 squeue -u $USER
 
 # 로그 확인
 tail -f logs/llama3_2_1b-FSDP_*.out
-```
-
-### 4. 체크포인트에서 재개
-
-```bash
-# 체크포인트 확인
-ls -lh checkpoints/
-
-# 재개 경로 확인 후 재제출
-sbatch fsdp-train.sbatch
-```
-
-### 5. 성능 분석
-
-```bash
-# 학습 완료 후 로그에서 throughput 확인
-grep -E "throughput|tokens/sec" logs/*.out
-
-# GPU 메모리 사용량 확인
-grep -E "memory|CUDA" logs/*.err
 ```
 
 ## 라이센스

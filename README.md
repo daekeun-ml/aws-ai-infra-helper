@@ -2,6 +2,14 @@
 
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
+## What's New
+
+### v1.0.1 (2025-12-21)
+- **FSDP2 지원 추가**: PyTorch 2.5+ FSDP2 기반 분산 학습 예제 및 가이드
+- **DeepSpeed 통합**: DeepSpeed ZeRO 기반 대규모 모델 학습 샘플 추가
+- **Qwen 3 0.6B 테스트**: 최신 Qwen 3 0.6B 모델 학습 및 추론 예제 (p4/p5 인스턴스 권장)
+- **성능 최적화**: 최신 GPU 인스턴스 타입에 최적화된 설정 및 가이드
+
 ## 개요
 
 이 저장소는 다음을 제공합니다:
