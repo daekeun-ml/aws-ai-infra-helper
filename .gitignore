@@ -221,5 +221,10 @@ deepspeed/.venv/
 
 deepspeed2/
 
+lightning/logs/
+lightning/checkpoints/
+lightning/lightning_logs/
+lightning/.venv/
+
 stack-env-vars.sh
 uv.lock

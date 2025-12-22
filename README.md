@@ -3,6 +3,9 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.3
+- **Lightning 분산 학습 추가**: PyTorch Lightning과 Lightning Fabric을 활용한 이중 프레임워크 지원
+
 ### v1.0.2
 - **데이터셋 관리 개선**: 한국어 Q&A 데이터셋(glan-qna-kr) 등 다양한 데이터셋 추가, 로컬 저장 및 FSx Lustre DRA 동기화 기능 지원
 - **데이터셋 용도별 분류**: Pre-training과 SFT(Supervised Fine-tuning) 용도로 구분하여 체계적 관리
@@ -47,6 +50,15 @@ aws-ai-infra-helper/
 │   ├── install-nccl-efa.sh       # NCCL/EFA 설치
 │   ├── fix-cuda-version.sh       # CUDA 버전 확인 및 수정
 │   └── generate-nccl-test.sh     # NCCL 테스트 생성
+│
+├── lightning/             # Lightning 분산 학습 (NEW)
+│   ├── README.md                 # Lightning 한국어 가이드
+│   ├── train.py                  # PyTorch Lightning 구현
+│   ├── train_fabric.py           # Lightning Fabric 구현
+│   ├── train.sbatch              # PyTorch Lightning Slurm 스크립트
+│   ├── train_fabric.sbatch       # Lightning Fabric Slurm 스크립트
+│   ├── release.sh                # 릴리즈 자동화 스크립트
+│   └── RELEASE_NOTES.md          # 상세 릴리즈 노트
 │
 ├── fsdp/                 # PyTorch FSDP 예제
 │   ├── README.md                 # FSDP 한국어 가이드
@@ -187,6 +199,32 @@ python3 prepare-datasets.py
 - glan-qna-kr: Korean Q&A dataset (limited to 150k samples)
 
 ## 분산 학습 프레임워크
+
+### Lightning (PyTorch Lightning + Lightning Fabric)
+
+PyTorch Lightning과 Lightning Fabric을 활용한 이중 프레임워크 지원으로, 자동화된 학습과 세밀한 제어를 모두 제공합니다.
+
+**주요 특징:**
+- PyTorch Lightning: 자동화된 학습 루프, 콜백, 로깅
+- Lightning Fabric: 커스텀 학습 루프, 세밀한 제어
+- FSDP 분산 학습 및 Mixed Precision 지원
+- 스마트 체크포인트 관리 (자동 재시작, 완료 감지)
+- 향상된 모니터링 (Loss, Grad Norm, LR, 처리량)
+
+**시작하기:**
+```bash
+cd lightning
+
+# PyTorch Lightning (자동화)
+python train.py --gpus=8 --batch_size=4 --max_steps=1000
+sbatch train.sbatch
+
+# Lightning Fabric (세밀한 제어)
+python train_fabric.py --gpus=8 --batch_size=4 --max_steps=1000
+sbatch train_fabric.sbatch
+```
+
+**상세 가이드:** [lightning/README.md](lightning/README.md)
 
 ### FSDP (Fully Sharded Data Parallel)
 
