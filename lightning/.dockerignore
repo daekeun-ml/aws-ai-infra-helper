@@ -1,5 +1,6 @@
 # Logs and outputs
 logs/
+lightning_logs/
 *.log
 
 # Checkpoints

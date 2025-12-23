@@ -29,6 +29,7 @@ FSDP2는 PyTorch 2.1+에서 제공하는 차세대 분산 학습 전략으로, D
 2. **공유 파일시스템**: FSx for Lustre 또는 EFS
 3. **Python 환경**: Python 3.8 이상
 4. **PyTorch**: PyTorch 2.1 이상 (FSDP2 지원)
+5. **Pyxis+Enroot** (선택사항): 컨테이너 기반 학습을 위한 Slurm 플러그인
 
 ### 필수 패키지 설치
 
@@ -51,6 +52,18 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 프로젝트 의존성 동기화
 uv sync
+```
+
+### Pyxis+Enroot 환경 설정 (선택사항)
+
+컨테이너 기반 학습을 위한 환경 구성:
+
+```bash
+# Docker 이미지 빌드 및 Enroot 변환
+./setup-pyxis.sh
+
+# 생성된 이미지 확인
+ls -lh fsdp2-training.sqsh
 ```
 
 ## 환경 준비
@@ -152,10 +165,16 @@ NUM_HEADS=16
 
 ## 멀티노드 분산 학습
 
-### 실행 방법
+### 로컬 환경 실행
 
 ```bash
-sbatch fsdp-train2.sbatch
+sbatch train-fsdp2.sbatch
+```
+
+### Pyxis+Enroot 컨테이너 실행
+
+```bash
+sbatch train-pyxis.sbatch
 ```
 
 ### 주요 설정

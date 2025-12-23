@@ -6,8 +6,11 @@ Qwen3 0.6B 모델을 PyTorch Lightning과 Lightning Fabric으로 분산학습하
 
 ### PyTorch Lightning (자동화된 학습)
 ```bash
-# Slurm 분산 학습
+# Slurm 분산 학습 (로컬 환경)
 sbatch train.sbatch
+
+# Slurm 분산 학습 (Pyxis+Enroot 컨테이너)
+sbatch train-pyxis.sbatch
 
 # 단일 노드 학습 예시
 python train.py --gpus=8 --local_dataset --dataset="/fsx/data/pretrain/wikitext-2" --save_every_n_steps=50 --val_check_interval=50 --max_steps=100
@@ -20,6 +23,18 @@ sbatch train_fabric.sbatch
 
 # 단일 노드 학습 예시
 python train_fabric.py --gpus=8 --local_dataset --dataset="/fsx/data/pretrain/wikitext-2" --save_every_n_steps=50 --max_steps=100
+```
+
+### Pyxis+Enroot 환경 설정
+
+컨테이너 기반 학습을 위한 환경 구성:
+
+```bash
+# Docker 이미지 빌드 및 Enroot 변환
+./setup-pyxis.sh
+
+# 생성된 이미지 확인
+ls -lh lightning-training.sqsh
 ```
 
 ## 주요 기능
@@ -91,6 +106,9 @@ lightning/
 ├── train_fabric.py       # Lightning Fabric 학습 스크립트
 ├── train.sbatch          # PyTorch Lightning Slurm 스크립트
 ├── train_fabric.sbatch   # Lightning Fabric Slurm 스크립트
+├── train-pyxis.sbatch    # Pyxis+Enroot 컨테이너 학습 스크립트
+├── Dockerfile            # 컨테이너 이미지 빌드용
+├── setup-pyxis.sh        # Pyxis+Enroot 환경 설정 스크립트
 └── README.md             # 이 파일
 ```
 

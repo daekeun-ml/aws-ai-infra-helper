@@ -3,6 +3,9 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.5
+- **FSDP2 & Lightning Pyxis+Enroot 지원**: 컨테이너 기반 분산 학습 환경을 FSDP2와 Lightning에도 확장
+
 ### v1.0.4
 - **DeepSpeed Pyxis+Enroot 지원**: 컨테이너 기반 분산 학습 환경 구성
 
@@ -32,7 +35,7 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 ## 기술 스택
 
 - **AWS 서비스**: SageMaker HyperPod (w/ Slurm), AWS ParallelCluster
-- **분산 학습 프레임워크**: PyTorch FSDP, Megatron-LM, TorchTitan
+- **분산 학습 프레임워크**: PyTorch FSDP/FSDP2, DeepSpeed, Lightning, Megatron-LM, TorchTitan
 - **컨테이너 런타임**: Pyxis/Enroot (Slurm 컨테이너 지원)
 - **네트워크**: AWS EFA (Elastic Fabric Adapter)
 
@@ -54,12 +57,15 @@ aws-ai-infra-helper/
 │   ├── fix-cuda-version.sh       # CUDA 버전 확인 및 수정
 │   └── generate-nccl-test.sh     # NCCL 테스트 생성
 │
-├── lightning/             # Lightning 분산 학습 (NEW)
+├── lightning/             # Lightning 분산 학습
 │   ├── README.md                 # Lightning 한국어 가이드
 │   ├── train.py                  # PyTorch Lightning 구현
 │   ├── train_fabric.py           # Lightning Fabric 구현
 │   ├── train.sbatch              # PyTorch Lightning Slurm 스크립트
 │   ├── train_fabric.sbatch       # Lightning Fabric Slurm 스크립트
+│   ├── train-pyxis.sbatch        # Pyxis+Enroot 컨테이너 학습 스크립트
+│   ├── Dockerfile                # 컨테이너 이미지 빌드용
+│   ├── setup-pyxis.sh            # Pyxis+Enroot 환경 설정
 │   ├── release.sh                # 릴리즈 자동화 스크립트
 │   └── RELEASE_NOTES.md          # 상세 릴리즈 노트
 │
@@ -72,18 +78,24 @@ aws-ai-infra-helper/
 │       ├── requirements.txt      # Python 의존성
 │       └── model_utils/          # 모델 유틸리티
 │
-├── fsdp2/                # PyTorch FSDP2 예제 (NEW)
+├── fsdp2/                # PyTorch FSDP2 예제
 │   ├── README.md                 # FSDP2 한국어 가이드
 │   ├── train-fsdp2.sbatch        # 멀티노드 학습 스크립트
 │   ├── train-fsdp2-singlenode.sh # 단일 노드 학습 스크립트
+│   ├── train-pyxis.sbatch        # Pyxis+Enroot 컨테이너 학습 스크립트
+│   ├── Dockerfile                # 컨테이너 이미지 빌드용
+│   ├── setup-pyxis.sh            # Pyxis+Enroot 환경 설정
 │   └── src/
 │       ├── train_fsdp2.py        # FSDP2 학습 스크립트
 │       └── model_utils/          # 모델 유틸리티
 │
-├── deepspeed/            # DeepSpeed 예제 (NEW)
-│   ├── README.md                 # DeepSpeed 한국어 가이드
+├── deepspeed/            # DeepSpeed 예제
+│   ├── README.md                 # DeepSpeed 영문 가이드
 │   ├── train-qwen3-0-6b.sbatch   # Qwen 3 0.6B 학습 스크립트
 │   ├── train-qwen3-0-6b-singlenode.sh  # 단일 노드 학습
+│   ├── train-pyxis.sbatch        # Pyxis+Enroot 컨테이너 학습 스크립트
+│   ├── Dockerfile                # 컨테이너 이미지 빌드용
+│   ├── setup-pyxis.sh            # Pyxis+Enroot 환경 설정
 │   ├── ds_config.json            # DeepSpeed 설정
 │   └── src/
 │       ├── train_deepspeed.py    # DeepSpeed 학습 스크립트
@@ -222,6 +234,10 @@ cd lightning
 python train.py --gpus=8 --batch_size=4 --max_steps=1000
 sbatch train.sbatch
 
+# Pyxis+Enroot 컨테이너 (권장)
+./setup-pyxis.sh  # 최초 1회 실행
+sbatch train-pyxis.sbatch
+
 # Lightning Fabric (세밀한 제어)
 python train_fabric.py --gpus=8 --batch_size=4 --max_steps=1000
 sbatch train_fabric.sbatch
@@ -271,6 +287,10 @@ cd fsdp2
 
 # 멀티노드 학습
 sbatch train-fsdp2.sbatch
+
+# Pyxis+Enroot 컨테이너 (권장)
+./setup-pyxis.sh  # 최초 1회 실행
+sbatch train-pyxis.sbatch
 ```
 
 **상세 가이드:** [fsdp2/README.md](fsdp2/README.md)
@@ -294,6 +314,10 @@ cd deepspeed
 
 # Qwen 3 0.6B 멀티노드 학습
 sbatch train-qwen3-0-6b.sbatch
+
+# Pyxis+Enroot 컨테이너 (권장)
+./setup-pyxis.sh  # 최초 1회 실행
+sbatch train-pyxis.sbatch
 ```
 
 **상세 가이드:** [deepspeed/README.md](deepspeed/README.md)

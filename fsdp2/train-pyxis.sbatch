@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT-0
 
 #SBATCH --nodes=2 # number of nodes to use
-#SBATCH --job-name=qwen3_0_6b-pyxis # name of your job
+#SBATCH --job-name=qwen3_0_6b-fsdp2-pyxis # name of your job
 #SBATCH --output=logs/%x_%j.out # logfile for stdout
 #SBATCH --error=logs/%x_%j.err # logfile for stderr, remove it to merge both outputs
 #SBATCH --exclusive # job has exclusive use of the resource, no sharing
@@ -12,10 +12,8 @@
 set -ex;
 
 # CUDA configuration
-#export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;10.0;10.3"  # P4/A100, A10G, L4/L40S, P5/H100, P6/B200, GB300/B300
-
-# Set CUDA version via environment variable
-CUDA_VERSION=${CUDA_VERSION:-"12.8"}  # Default to 12.8
+export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;10.0;10.3"  # P4/A100, A10G, L4/L40S, P5/H100, P6/B200, GB300/B300
+CUDA_VERSION=${CUDA_VERSION:-"12.8"}
 if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
     export CUDA_HOME="/usr/local/cuda-${CUDA_VERSION}"
     export PATH="$CUDA_HOME/bin:$PATH"
@@ -24,17 +22,17 @@ if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
 fi
 
 # Container configuration
-export CONTAINER_IMAGE="/fsx/ubuntu/aws-ai-infra-helper/deepspeed/deepspeed-training.sqsh"
+export CONTAINER_IMAGE="/fsx/ubuntu/aws-ai-infra-helper/fsdp2/fsdp2-training.sqsh"
 export CONTAINER_MOUNTS="/fsx:/fsx"
 
 # For Checkpoint: ensuring synchronization across all nodes
 export TORCH_NCCL_BLOCKING_WAIT=1
+# export NCCL_DEBUG=INFO
+# export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # NCCL network configuration for multi-node
 export NCCL_SOCKET_IFNAME=^docker0,lo
 export NCCL_IB_DISABLE=1
-#export NCCL_DEBUG=INFO
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 GPUS_PER_NODE=8 # 4 for G5.12x, 8 for P4/P5
 
@@ -42,7 +40,6 @@ GPUS_PER_NODE=8 # 4 for G5.12x, 8 for P4/P5
 echo "=== Environment Check ==="
 echo "Python: $(python --version)"
 echo "CUDA available: $(python -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'Cannot check CUDA')"
-echo "DeepSpeed version: $(python -c 'import deepspeed; print(deepspeed.__version__)' 2>/dev/null || echo 'DeepSpeed not found')"
 echo "Number of nodes: $SLURM_JOB_NUM_NODES"
 echo "Job ID: $SLURM_JOB_ID"
 echo "Master node: $(hostname)"
@@ -54,46 +51,32 @@ echo "=========================="
 MODEL_TYPE="qwen3_0_6b"
 TOKENIZER="Qwen/Qwen3-0.6B"
 
+DATASET="/fsx/data/pretrain/wikitext-2"
+LOCAL_DATASET=true  # Set to false for HuggingFace datasets
+
 # DATASET="allenai/c4"
-# DATASET_CONFIG_NAME="en"  # Used for HuggingFace datasets
-# LOCAL_DATASET=false  # Set to false for HuggingFace datasets
+# DATASET_CONFIG_NAME="en"
+# LOCAL_DATASET=false
 
-# Alternative local dataset configuration
-DATASET="/fsx/data/wikitext-2"
-LOCAL_DATASET=true
-
-CHECKPOINT_DIR="checkpoints"
-DEEPSPEED_CONFIG="ds_config.json"
-
-# Training hyperparameters
-LEARNING_RATE=5e-5
-MAX_STEPS=200
+MAX_STEPS=100
 EPOCHS=1
-LOGGING_FREQ=5
+LOGGING_FREQ=10
 VALIDATION_FREQ=100
 VALIDATION_BATCHES=5
-CHECKPOINT_FREQ=100
+CHECKPOINT_FREQ=50
+CHECKPOINT_DIR="checkpoints"
 
 # Model configuration
-VOCAB_SIZE=151936
-HIDDEN_SIZE=1024
-INTERMEDIATE_SIZE=3072
-NUM_HIDDEN_LAYERS=28
-NUM_ATTENTION_HEADS=16
+MAX_CONTEXT_WIDTH=8192
 NUM_KEY_VALUE_HEADS=8
-MAX_POSITION_EMBEDDINGS=40960
-RMS_NORM_EPS=1e-6
-ROPE_THETA=1000000
+INTERMEDIATE_SIZE=3072
+HIDDEN_WIDTH=1024
+NUM_LAYERS=28
+NUM_HEADS=16
 
-# Optimization settings
-BETA1=0.9
-BETA2=0.95
-WEIGHT_DECAY=0.1
-GRAD_CLIP=1.0
-WARMUP_STEPS=100
-
-# Mixed precision
-BF16=1
+# Batch sizes
+TRAIN_BATCH_SIZE=1
+VAL_BATCH_SIZE=1
 
 ###########################
 # Distributed Training Setup
@@ -126,40 +109,33 @@ if [ -d "/opt/sagemaker_cluster" ]; then
 fi
 
 echo "Executing command:"
-echo "srun ${AUTO_RESUME} -l --container-image=$CONTAINER_IMAGE --container-mounts=$CONTAINER_MOUNTS torchrun ${TORCHRUN_ARGS[@]} /workspace/src/train_deepspeed.py --model_type $MODEL_TYPE --tokenizer $TOKENIZER --dataset $DATASET $([ "$LOCAL_DATASET" = true ] && echo "--local_dataset")"
+echo "srun ${AUTO_RESUME} -l --container-image=$CONTAINER_IMAGE --container-mounts=$CONTAINER_MOUNTS torchrun ${TORCHRUN_ARGS[@]} /workspace/src/train_fsdp2.py --model_type $MODEL_TYPE --tokenizer $TOKENIZER --dataset $DATASET $([ "$LOCAL_DATASET" = true ] && echo "--local_dataset")"
 echo ""
 
 srun ${AUTO_RESUME} -l \
      --container-image=$CONTAINER_IMAGE \
      --container-mounts=$CONTAINER_MOUNTS \
-     torchrun "${TORCHRUN_ARGS[@]}" /workspace/src/train_deepspeed.py \
-    --model_type $MODEL_TYPE \
-    --tokenizer $TOKENIZER \
-    --dataset $DATASET \
+     torchrun "${TORCHRUN_ARGS[@]}" /workspace/src/train_fsdp2.py \
+    --model_type=$MODEL_TYPE \
+    --tokenizer=$TOKENIZER \
+    --dataset=$DATASET \
     $([ "$LOCAL_DATASET" = true ] && echo "--local_dataset") \
-    --learning_rate $LEARNING_RATE \
-    --max_steps $MAX_STEPS \
-    --epochs $EPOCHS \
-    --logging_freq $LOGGING_FREQ \
-    --validation_freq $VALIDATION_FREQ \
-    --validation_batches $VALIDATION_BATCHES \
-    --checkpoint_freq $CHECKPOINT_FREQ \
-    --checkpoint_dir $CHECKPOINT_DIR \
-    --vocab_size $VOCAB_SIZE \
-    --hidden_size $HIDDEN_SIZE \
-    --intermediate_size $INTERMEDIATE_SIZE \
-    --num_hidden_layers $NUM_HIDDEN_LAYERS \
-    --num_attention_heads $NUM_ATTENTION_HEADS \
-    --num_key_value_heads $NUM_KEY_VALUE_HEADS \
-    --max_position_embeddings $MAX_POSITION_EMBEDDINGS \
-    --rms_norm_eps $RMS_NORM_EPS \
-    --rope_theta $ROPE_THETA \
-    --beta1 $BETA1 \
-    --beta2 $BETA2 \
-    --weight_decay $WEIGHT_DECAY \
-    --grad_clip $GRAD_CLIP \
-    --warmup_steps $WARMUP_STEPS \
-    --bf16 $BF16 \
-    --deepspeed_config $DEEPSPEED_CONFIG
+    $([ "$LOCAL_DATASET" = false ] && echo "--dataset_config_name $DATASET_CONFIG_NAME") \
+    --max_steps=$MAX_STEPS \
+    --epochs=$EPOCHS \
+    --logging_freq=$LOGGING_FREQ \
+    --validation_freq=$VALIDATION_FREQ \
+    --validation_batches=$VALIDATION_BATCHES \
+    --checkpoint_freq=$CHECKPOINT_FREQ \
+    --checkpoint_dir=$CHECKPOINT_DIR \
+    --max_context_width=$MAX_CONTEXT_WIDTH \
+    --num_key_value_heads=$NUM_KEY_VALUE_HEADS \
+    --intermediate_size=$INTERMEDIATE_SIZE \
+    --hidden_width=$HIDDEN_WIDTH \
+    --num_layers=$NUM_LAYERS \
+    --num_heads=$NUM_HEADS \
+    --train_batch_size=$TRAIN_BATCH_SIZE \
+    --val_batch_size=$VAL_BATCH_SIZE \
+    --resume_from_checkpoint=$CHECKPOINT_DIR
 
 echo "Training completed!"

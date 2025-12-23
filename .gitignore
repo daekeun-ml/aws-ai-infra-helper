@@ -214,6 +214,7 @@ fsdp/.venv/
 fsdp2/logs/
 fsdp2/checkpoints/
 fsdp2/.venv/
+fsdp2/*.sqsh
 
 deepspeed/logs/
 deepspeed/checkpoints/
@@ -226,6 +227,7 @@ lightning/logs/
 lightning/checkpoints/
 lightning/lightning_logs/
 lightning/.venv/
+lightning/*.sqsh
 
 stack-env-vars.sh
 uv.lock
