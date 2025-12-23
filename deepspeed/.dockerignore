@@ -1,0 +1,5 @@
+logs/
+checkpoints/
+*.log
+*.out
+*.err

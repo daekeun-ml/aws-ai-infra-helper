@@ -218,6 +218,7 @@ fsdp2/.venv/
 deepspeed/logs/
 deepspeed/checkpoints/
 deepspeed/.venv/
+deepspeed/*.sqsh
 
 deepspeed2/
 

@@ -3,6 +3,9 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.4
+- **DeepSpeed Pyxis+Enroot 지원**: 컨테이너 기반 분산 학습 환경 구성
+
 ### v1.0.3
 - **Lightning 분산 학습 추가**: PyTorch Lightning과 Lightning Fabric을 활용한 이중 프레임워크 지원
 
