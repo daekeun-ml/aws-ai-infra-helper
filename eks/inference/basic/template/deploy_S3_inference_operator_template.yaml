@@ -6,13 +6,13 @@ metadata:
 spec:
   modelName: deepseek15b
   endpointName: deepseek15b
-  instanceType: ml.g5.8xlarge
+  instanceType: <YOUR_INSTANCE_TYPE>
   invocationEndpoint: invocations
   modelSourceConfig:
     modelSourceType: s3
     s3Storage:
-      bucketName: deepseek-qwen-1-5b-us-west-2
-      region: us-west-2
+      bucketName: <YOUR_S3_BUCKET>  # Your S3 bucket name
+      region: <YOUR_REGION> # Your region
     modelLocation: deepseek15b
     prefetchEnabled: true
   worker:

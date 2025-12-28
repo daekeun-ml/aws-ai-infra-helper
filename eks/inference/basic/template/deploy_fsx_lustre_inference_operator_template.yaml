@@ -5,12 +5,12 @@ metadata:
   namespace: default
 spec:
   endpointName: deepseek15b-fsx
-  instanceType: ml.g5.8xlarge
+  instanceType: <YOUR_INSTANCE_TYPE>
   invocationEndpoint: invocations
   modelName: deepseek15b
   modelSourceConfig:
     fsxStorage:
-      fileSystemId: fs-09d6a597bc983fe33
+      fileSystemId: <YOUR_FSX_FILESYSTEM>
     modelLocation: deepseek15b
     modelSourceType: fsx
   worker:

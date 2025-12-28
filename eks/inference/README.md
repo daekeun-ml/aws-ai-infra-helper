@@ -1,401 +1,103 @@
-# HyperPod Inference Endpoint 배포 및 테스트 가이드
+# HyperPod EKS Inference Hands-on
 
-## 사전 준비
+AWS SageMaker HyperPod EKS 클러스터에서 HyperPod Inference Operator를 활용한 AI/ML 모델 추론 솔루션을 제공합니다.
 
-### 0. EKS 클러스터 생성
+## 🎯 HyperPod Inference w/ EKS 특장점
 
-HyperPod에서 EKS 기반 클러스터 생성하는 [가이드라인](https://docs.aws.amazon.com/ko_kr/sagemaker/latest/dg/sagemaker-hyperpod-eks-operate-console-ui-create-cluster.html
-)을 참고하여 EKS 클러스터를 생성합니다.
+### 📋 HyperPod Inference Operator 개요
 
-### 1. EKS 클러스터 접속 설정
+SageMaker HyperPod는 대규모 파운데이션 모델 개발을 위해 복원력을 핵심으로 설계된 목적별 인프라입니다. 이제 EKS 지원을 통해 훈련, 파인튜닝, 배포를 동일한 HyperPod 컴퓨팅 리소스에서 수행할 수 있어 전체 모델 라이프사이클에서 리소스 활용도를 극대화합니다.
 
-```bash
-# HyperPod EKS 클러스터에 kubeconfig 설정 (Console에서 클러스터 클릭 후 Orchestrator 항목에서 이름 확인 가능)
-aws eks update-kubeconfig --name "YOUR_EKS_CLUSTER_NAME" --region us-west-2
+Kubernetes를 생성형 AI 전략의 일부로 활용하는 고객들은 유연성, 이식성, 오픈소스 프레임워크의 장점을 누릴 수 있습니다. HyperPod는 친숙한 Kubernetes 워크플로우를 유지하면서 파운데이션 모델을 위해 특별히 구축된 고성능 인프라에 접근할 수 있게 합니다.
 
-# 클러스터 연결 확인
-kubectl get nodes
-```
+그러나 Kubernetes에서 대규모 파운데이션 모델 추론을 실행하는 것은 여러 도전과제를 수반합니다: 모델의 안전한 다운로드, 최적 성능을 위한 적절한 컨테이너와 프레임워크 식별, 올바른 배포 구성, 적절한 GPU 타입 선택, 로드 밸런서 프로비저닝, 관찰성 구현, 수요 급증에 대응하는 자동 스케일링 정책 추가 등입니다.
 
-### 2. PVC 상태 확인
+HyperPod Inference Operator는 이러한 복잡성을 해결하여 인프라 설정을 간소화하고, 고객이 백엔드 복잡성 관리보다는 모델 제공에 더 집중할 수 있도록 합니다.
 
-```bash
-kubectl get pvc
-```
+#### **핵심 기능**
+- **원클릭 JumpStart 배포**: 400+ 오픈소스 파운데이션 모델 (DeepSeek-R1, Mistral, Llama4 등) 원클릭 배포
+- **다중 배포 소스**: SageMaker JumpStart, S3, FSx Lustre에서 모델 배포 지원
+- **유연한 배포 방식**: kubectl, HyperPod CLI, Python SDK를 통한 다양한 배포 옵션
+- **자동 인프라 프로비저닝**: 적절한 인스턴스 타입 식별, 모델 다운로드, ALB 구성 자동화
 
-출력 예시:
-```
-NAME        STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS
-fsx-claim   Bound    fsx-pv   1200Gi     RWX            fsx-sc
-```
+#### **고급 스케일링 & 관리**
+- **동적 오토스케일링**: CloudWatch 및 Prometheus 메트릭 기반 KEDA 자동 스케일링
+- **Task Governance**: 추론과 훈련 워크로드 간 우선순위 기반 리소스 할당
+- **SageMaker 엔드포인트 통합**: 기존 SageMaker 호출 패턴과 완벽 호환
 
----
+#### **포괄적 관찰성**
+- **플랫폼 메트릭**: GPU 사용률, 메모리 사용량, 노드 상태
+- **추론 전용 메트릭**: 
+  - `model_invocations_total`: 총 모델 호출 수
+  - `model_latency_milliseconds`: 모델 응답 지연시간
+  - `model_ttfb_milliseconds`: 첫 바이트까지의 시간
+  - `model_concurrent_requests`: 동시 요청 수
 
-## 방법 1: FSX Lustre 기반 Endpoint 배포
+#### **엔터프라이즈 보안 & 네트워킹**
+- **TLS 인증서 자동 관리**: S3 저장 및 ACM 통합
+- **Application Load Balancer**: 자동 프로비저닝 및 라우팅 구성
+- **HTTPS 지원**: 클라이언트 보안 연결 지원
 
-### Step 1: 모델을 FSX로 복사
+### 🚀 핵심 이점
 
-**copy.yaml 파일 생성:**
-```yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: copy-model-to-fsx
-spec:
-  template:
-    spec:
-      containers:
-        - name: aws-cli
-          image: amazon/aws-cli:latest
-          command: ["/bin/bash"]
-          args:
-            - -c
-            - |
-              aws s3 sync s3://jumpstart-cache-prod-us-east-2/deepseek-llm/deepseek-llm-r1-distill-qwen-1-5b/artifacts/inference-prepack/v2.0.0 /fsx/deepseek15b
-          volumeMounts:
-            - name: fsx-storage
-              mountPath: /fsx
-          env:
-            - name: AWS_DEFAULT_REGION
-              value: "us-west-2"
-            - name: AWS_REGION
-              value: "us-west-2"
-            - name: AWS_ACCESS_KEY_ID
-              value: "<YOUR_ACCESS_KEY_ID>"
-            - name: AWS_SECRET_ACCESS_KEY
-              value: "<YOUR_SECRET_ACCESS_KEY>"
-            - name: AWS_SESSION_TOKEN
-              value: "<YOUR_SESSION_TOKEN>"  # 임시 자격 증명 사용 시
-      volumes:
-        - name: fsx-storage
-          persistentVolumeClaim:
-            claimName: fsx-claim
-      restartPolicy: Never
-  backoffLimit: 3
-```
+#### 1. **관리형 복원력 (Managed Resiliency)**
+- **Deep Health Checks**: GPU/Trainium 인스턴스 스트레스 테스트
+- **자동 노드 복구**: 하드웨어 장애 시 자동 노드 교체/재부팅
+- **Job Auto Resume**: 중단 시 체크포인트에서 자동 재시작
 
-**Job 실행:**
-```bash
-kubectl apply -f copy_to_fsx_lustre.yaml
-```
+#### 2. **Kubernetes 생태계 활용**
+- **EKS 통합**: 관리형 Kubernetes 컨트롤 플레인 활용
+- **네이티브 도구**: kubectl, Helm, Kustomize 등 표준 도구 사용
+- **확장성**: KubeRay, Kueue 등 서드파티 도구 지원
 
-**복사 상태 확인:**
-```bash
-# Job 상태 확인
-kubectl get jobs
+#### 3. **운영 효율성**
+- **30% 비용 절감**: 인프라 관리 오버헤드 감소
+- **40% 훈련 시간 단축**: 내장 복원력으로 중단 최소화
+- **통합 관리**: 훈련과 추론을 동일한 클러스터에서 관리
 
-# Pod 로그 확인 (복사 진행률)
-kubectl logs -f job/copy-model-to-fsx
-```
+## 📁 HyperPod EKS 추론 Hands-on 구성
 
-### Step 2: FSX File System ID 확인
+### 🔰 [Basic](./basic/)
+기본적인 HyperPod EKS 추론 환경 구성
+- HyperPod Inference Operator 기반 배포
+- FSx Lustre 및 S3 CSI를 이용한 모델 저장소
+- JumpStart 모델 및 커스텀 모델 지원
+- 자동화 스크립트 및 상세 가이드
+
+### 🚀 [KV Cache & Intelligent Routing](./kvcache-and-intelligent-routing/)
+고급 추론 최적화 기능
+- Managed Tiered KV Cache (L1/L2 캐시)
+- Intelligent Routing 전략
+- 대규모 모델 최적화
+- 고성능 벤치마크
+
+## 🛠 공통 도구 (Optional)
 
 ```bash
-kubectl get pv fsx-pv -o yaml | grep -A5 "csi:"
+# 디펜던시 설치 (kubectl, eksctl, helm)
+./install_tools.sh
+
+# FSx 탐색
+./explore_fsx.sh
 ```
 
-출력 예시:
-```yaml
-csi:
-  driver: fsx.csi.aws.com
-  volumeAttributes:
-    dnsname: fs-09d6a597bc983fe33.fsx.us-west-2.amazonaws.com
-    mountname: e3pfzb4v
-  volumeHandle: fs-09d6a597bc983fe33
-```
+## 🚀 빠른 시작
 
-### Step 3: FSX Endpoint 배포
+1. **Basic 추론 환경**: HyperPod Inference Operator를 활용한 기본 모델 서빙은 [`basic/`](./basic/) 폴더를 참고하세요.
 
-**deploy_fsx_lustre_inference_operator.yaml 파일에서 fileSystemId 수정:**
-```yaml
-apiVersion: inference.sagemaker.aws.amazon.com/v1alpha1
-kind: InferenceEndpointConfig
-metadata:
-  name: deepseek15b-fsx
-  namespace: default
-spec:
-  endpointName: deepseek15b-fsx
-  instanceType: ml.g5.8xlarge
-  invocationEndpoint: invocations
-  modelName: deepseek15b
-  modelSourceConfig:
-    fsxStorage:
-      fileSystemId: fs-09d6a597bc983fe33  # 위에서 확인한 FSX ID로 변경
-    modelLocation: deepseek15b
-    modelSourceType: fsx
-  worker:
-    environmentVariables:
-    - name: HF_MODEL_ID
-      value: /opt/ml/model
-    - name: SAGEMAKER_PROGRAM
-      value: inference.py
-    - name: SAGEMAKER_SUBMIT_DIRECTORY
-      value: /opt/ml/model/code
-    - name: MODEL_CACHE_ROOT
-      value: /opt/ml/model
-    - name: SAGEMAKER_ENV
-      value: '1'
-    image: 763104351884.dkr.ecr.us-east-2.amazonaws.com/huggingface-pytorch-tgi-inference:2.4.0-tgi2.3.1-gpu-py311-cu124-ubuntu22.04-v2.0
-    modelInvocationPort:
-      containerPort: 8080
-      name: http
-    modelVolumeMount:
-      mountPath: /opt/ml/model
-      name: model-weights
-    resources:
-      limits:
-        nvidia.com/gpu: 1
-      requests:
-        cpu: 30000m
-        memory: 100Gi
-        nvidia.com/gpu: 1
-```
+2. **고급 최적화**: KV Cache와 Intelligent Routing을 활용한 고성능 추론은 [`kvcache-and-intelligent-routing/`](./kvcache-and-intelligent-routing/) 폴더를 참고하세요.
 
-**Endpoint 배포:**
-```bash
-kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
-```
+## 📋 사전 요구사항
 
-**배포 상태 확인:**
-```bash
-# Pod 상태 확인
-kubectl get pods
+- AWS CLI 구성 및 적절한 IAM 권한
+- kubectl, eksctl, helm 설치
+- SageMaker HyperPod EKS 클러스터
+- HyperPod Inference Operator 설치
 
-# 상세 이벤트 확인
-kubectl describe pod -l app=deepseek15b-fsx
-```
+## 🔗 관련 문서
 
----
+- [HyperPod EKS 지원 소개](https://aws.amazon.com/blogs/machine-learning/introducing-amazon-eks-support-in-amazon-sagemaker-hyperpod/)
+- [HyperPod 모델 배포 설정](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-model-deployment-setup.html)
+- [HyperPod EKS 클러스터 생성](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-eks-operate-console-ui-create-cluster.html)
 
-## 방법 2: S3 기반 Endpoint 배포
-
-### Step 1: S3 버킷 생성 및 모델 업로드
-
-```bash
-# S3 버킷 생성 (클러스터와 같은 리전)
-aws s3 mb s3://deepseek-qwen-1-5b-us-west-2 --region us-west-2
-
-# 모델 복사
-aws s3 sync s3://jumpstart-cache-prod-us-east-2/deepseek-llm/deepseek-llm-r1-distill-qwen-1-5b/artifacts/inference-prepack/v2.0.0 \
-  s3://deepseek-qwen-1-5b-us-west-2/deepseek15b/ --region us-west-2
-```
-
-### Step 2: S3 Endpoint 배포
-
-**deploy_S3_inference_operator.yaml:**
-```yaml
-apiVersion: inference.sagemaker.aws.amazon.com/v1alpha1
-kind: InferenceEndpointConfig
-metadata:
-  name: deepseek15b
-  namespace: default
-spec:
-  modelName: deepseek15b
-  endpointName: deepseek15b
-  instanceType: ml.g5.8xlarge
-  invocationEndpoint: invocations
-  modelSourceConfig:
-    modelSourceType: s3
-    s3Storage:
-      bucketName: deepseek-qwen-1-5b-us-west-2  # 생성한 버킷 이름
-      region: us-west-2                         # 버킷 리전
-    modelLocation: deepseek15b
-    prefetchEnabled: true
-  worker:
-    resources:
-      limits:
-        nvidia.com/gpu: 1
-      requests:
-        nvidia.com/gpu: 1
-        cpu: 25600m
-        memory: 102Gi
-    image: 763104351884.dkr.ecr.us-east-2.amazonaws.com/djl-inference:0.32.0-lmi14.0.0-cu124
-    modelInvocationPort:
-      containerPort: 8080
-      name: http
-    modelVolumeMount:
-      name: model-weights
-      mountPath: /opt/ml/model
-    environmentVariables:
-      - name: OPTION_ROLLING_BATCH
-        value: "vllm"
-      - name: SERVING_CHUNKED_READ_TIMEOUT
-        value: "480"
-      - name: DJL_OFFLINE
-        value: "true"
-      - name: NUM_SHARD
-        value: "1"
-      - name: SAGEMAKER_PROGRAM
-        value: "inference.py"
-      - name: SAGEMAKER_SUBMIT_DIRECTORY
-        value: "/opt/ml/model/code"
-      - name: MODEL_CACHE_ROOT
-        value: "/opt/ml/model"
-      - name: SAGEMAKER_MODEL_SERVER_WORKERS
-        value: "1"
-      - name: SAGEMAKER_MODEL_SERVER_TIMEOUT
-        value: "3600"
-      - name: OPTION_TRUST_REMOTE_CODE
-        value: "true"
-      - name: OPTION_ENABLE_REASONING
-        value: "true"
-      - name: OPTION_REASONING_PARSER
-        value: "deepseek_r1"
-      - name: SAGEMAKER_CONTAINER_LOG_LEVEL
-        value: "20"
-      - name: SAGEMAKER_ENV
-        value: "1"
-```
-
-**Endpoint 배포:**
-```bash
-kubectl apply -f deploy_S3_inference_operator.yaml
-```
-
-**배포 상태 확인:**
-```bash
-kubectl get pods
-kubectl get svc
-```
-
----
-
-## Endpoint 테스트
-
-### Step 1: 테스트용 Pod 생성
-
-```bash
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: test-endpoint
-spec:
-  containers:
-  - name: test
-    image: python:3.11-slim
-    command: ["sleep", "3600"]
-  restartPolicy: Never
-EOF
-```
-
-### Step 2: Pod 상태 확인
-
-```bash
-kubectl get pod test-endpoint
-```
-
-### Step 3: requests 라이브러리 설치
-
-```bash
-kubectl exec test-endpoint -- pip install requests -q
-```
-
-### Step 4: Endpoint 정보 확인
-
-```bash
-kubectl get endpoints
-```
-
-출력 예시:
-```
-NAME                              ENDPOINTS
-deepseek15b-fsx-routing-service   10.1.112.202:8081
-deepseek15b-routing-service       10.1.111.162:8081
-```
-
-### Step 5: FSX Endpoint 테스트
-
-> **Note:** Service DNS 이름 대신 Endpoint IP를 직접 사용해야 합니다. Step 4에서 확인한 IP를 사용하세요.
-
-```bash
-# Endpoint IP 확인 (예: 10.1.112.202:8081)
-kubectl get endpoints deepseek15b-fsx-routing-service
-
-# 테스트 실행 (IP를 실제 값으로 변경)
-kubectl exec test-endpoint -- python3 -c '
-import requests
-import json
-
-response = requests.post(
-    "http://10.1.112.202:8081/invocations",  # 실제 Endpoint IP로 변경
-    headers={"Content-Type": "application/json"},
-    json={"inputs": "Hi, what can you help me with?"},
-    timeout=120
-)
-print(f"Status: {response.status_code}")
-print(f"Response: {response.text}")
-'
-```
-
-### Step 6: S3 Endpoint 테스트
-
-```bash
-# Endpoint IP 확인 (예: 10.1.111.162:8081)
-kubectl get endpoints deepseek15b-routing-service
-
-# 테스트 실행 (IP를 실제 값으로 변경)
-kubectl exec test-endpoint -- python3 -c '
-import requests
-import json
-
-response = requests.post(
-    "http://10.1.111.162:8081/invocations",  # 실제 Endpoint IP로 변경
-    headers={"Content-Type": "application/json"},
-    json={"inputs": "Hi, what can you help me with?"},
-    timeout=120
-)
-print(f"Status: {response.status_code}")
-print(f"Response: {response.text}")
-'
-```
-
-### Step 7: 테스트 Pod 정리
-
-```bash
-kubectl delete pod test-endpoint
-```
-
----
-
-## 리소스 정리
-
-### Endpoint 삭제
-
-```bash
-# FSX Endpoint 삭제
-kubectl delete inferenceendpointconfig deepseek15b-fsx
-
-# S3 Endpoint 삭제
-kubectl delete inferenceendpointconfig deepseek15b
-```
-
-### 복사 Job 삭제
-
-```bash
-kubectl delete job copy-model-to-fsx
-```
-
-### S3 버킷 삭제 (선택사항)
-
-```bash
-aws s3 rb s3://deepseek-qwen-1-5b-us-west-2 --force --region us-west-2
-```
-
----
-
-## 유용한 명령어
-
-```bash
-# 모든 리소스 상태 확인
-kubectl get pods,svc,jobs,inferenceendpointconfig
-
-# Pod 로그 확인
-kubectl logs <pod-name>
-
-# Pod 상세 정보 (이벤트 포함)
-kubectl describe pod <pod-name>
-
-# InferenceEndpointConfig 상세 정보
-kubectl describe inferenceendpointconfig <name>
-```
+각 솔루션별 상세한 요구사항과 설정 방법은 해당 폴더의 README를 참고하세요.

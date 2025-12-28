@@ -3,6 +3,13 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.6
+- **HyperPod EKS Inference 솔루션 추가**: HyperPod Inference Operator를 활용한 Kubernetes 기반 AI/ML 모델 추론 환경 구성
+  - **Basic 추론 환경**: FSx Lustre 및 S3 CSI 기반 모델 배포, 자동화 스크립트 제공
+  - **KV Cache & Intelligent Routing**: Managed Tiered KV Cache와 Intelligent Routing을 활용한 고성능 추론 최적화
+  - **원클릭 JumpStart 배포**: 400+ 오픈소스 파운데이션 모델 (DeepSeek-R1, Mistral, Llama4 등) 지원
+  - **포괄적 관찰성**: 추론 전용 메트릭 및 플랫폼 메트릭 모니터링
+  - **엔터프라이즈 보안**: TLS 인증서 자동 관리, ALB 프로비저닝, HTTPS 지원
 ### v1.0.5
 - **FSDP2 & Lightning Pyxis+Enroot 지원**: 컨테이너 기반 분산 학습 환경을 FSDP2와 Lightning에도 확장
 
@@ -40,6 +47,9 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 - **네트워크**: AWS EFA (Elastic Fabric Adapter)
 
 ## 프로젝트 구조
+
+<details>
+<summary>📁 클릭하여 전체 구조 보기</summary>
 
 ```
 aws-ai-infra-helper/
@@ -129,12 +139,59 @@ aws-ai-infra-helper/
     │   ├── 3.validate-cluster.sh # 클러스터 검증
     │   └── check-nodegroup.sh    # NodeGroup 정보 확인
     │
-    └── inference/        # EKS 추론 엔드포인트
-        ├── README.md             # 추론 배포 가이드
-        ├── deploy_S3_inference_operator.yaml
-        ├── deploy_fsx_lustre_inference_operator.yaml
-        └── copy_to_fsx_lustre.yaml
+    └── inference/        # HyperPod EKS 추론 솔루션
+        ├── README.md             # HyperPod EKS Inference 가이드
+        ├── install_tools.sh      # 필수 도구 설치 스크립트
+        ├── explore_fsx.sh        # FSx 탐색 도구
+        │
+        ├── basic/                # 기본 추론 환경
+        │   ├── README.md                 # 기본 추론 배포 가이드
+        │   ├── 1.grant_eks_access.sh     # EKS 접근 권한 설정
+        │   ├── 2.prepare_fsx_inference.sh # FSx 기반 추론 환경 준비
+        │   ├── 3.copy_to_s3.sh           # 모델을 S3에 복사
+        │   ├── 4.fix_s3_csi_credentials.sh # S3 CSI 자격증명 수정
+        │   ├── 5.prepare_s3_inference.sh  # S3 기반 추론 환경 준비
+        │   ├── 6.create_test_pod.sh       # 테스트 Pod 생성
+        │   ├── comprehensive_benchmark.py # 종합 성능 벤치마크
+        │   ├── invoke.py                  # 기본 추론 테스트
+        │   └── template/                  # Kubernetes 배포 템플릿
+        │       ├── deploy_S3_inference_operator_template.yaml
+        │       ├── deploy_fsx_lustre_inference_operator_template.yaml
+        │       └── copy_to_fsx_lustre_template.yaml
+        │
+        └── kvcache-and-intelligent-routing/ # 고급 추론 최적화
+            ├── README.md                 # KV Cache & Intelligent Routing 가이드
+            ├── 1.copy_to_s3.sh           # 모델을 S3에 복사
+            ├── 2.setup_s3_csi.sh         # S3 CSI 설정
+            ├── 3.prepare.sh              # 환경 준비
+            ├── 4.check_status.sh         # 상태 확인
+            ├── cleanup.sh                # 리소스 정리
+            ├── benchmark.py              # 고성능 벤치마크
+            ├── invoke.py                 # 추론 테스트
+            └── inference_endpoint_config.yaml # 추론 엔드포인트 설정
 ```
+
+</details>
+
+## 📚 폴더별 가이드
+
+### 🔧 유틸리티 및 도구
+- **[scripts/](scripts/)** - 클러스터 연결, 환경 검증, 설치 스크립트
+- **[observability/](observability/)** - 모니터링 및 관찰성 도구 (Prometheus, Grafana 등)
+
+### 🚀 분산 학습 프레임워크
+- **[lightning/](lightning/README.md)** - PyTorch Lightning + Lightning Fabric 이중 프레임워크
+- **[fsdp/](fsdp/README.md)** - PyTorch 네이티브 FSDP 분산 학습
+- **[fsdp2/](fsdp2/README.md)** - 차세대 FSDP2 (PyTorch 2.5+)
+- **[deepspeed/](deepspeed/README.md)** - Microsoft DeepSpeed ZeRO 최적화
+- **[megatron/](megatron/)** - NVIDIA Megatron-LM 대규모 모델 학습
+- **[torchtitan/](torchtitan/)** - Meta TorchTitan 최신 학습 플랫폼
+
+### ☸️ Kubernetes (EKS) 솔루션
+- **[eks/training/](eks/training/README.md)** - EKS 기반 학습 클러스터 설정
+- **[eks/inference/](eks/inference/README.md)** - HyperPod EKS Inference 솔루션
+  - **[basic/](eks/inference/basic/README.md)** - 기본 추론 환경 (FSx/S3 기반)
+  - **[kvcache-and-intelligent-routing/](eks/inference/kvcache-and-intelligent-routing/README.md)** - 고급 추론 최적화
 
 ## 빠른 시작
 

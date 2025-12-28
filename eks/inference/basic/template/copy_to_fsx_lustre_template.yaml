@@ -17,16 +17,12 @@ spec:
             - name: fsx-storage
               mountPath: /fsx
           env:
-            - name: AWS_DEFAULT_REGION
-              value: "" # Replace with your region
-            - name: AWS_REGION
-              value: "" # Replace with your region
             - name: AWS_ACCESS_KEY_ID
-              value: "" # Replace with key id
+              value: "<YOUR_ACCESS_KEY_ID>"
             - name: AWS_SECRET_ACCESS_KEY
-              value: "" # Replace with access key
-            - name: AWS_SESSION_TOKEN
-              value: "" # Replace with session token if using temporary credentials
+              value: "<YOUR_SECRET_ACCESS_KEY>"
+            - name: AWS_DEFAULT_REGION
+              value: "<YOUR_AWS_REGION>"
       volumes:
         - name: fsx-storage
           persistentVolumeClaim:
