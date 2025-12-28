@@ -7,9 +7,7 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 - **HyperPod EKS Inference 솔루션 추가**: HyperPod Inference Operator를 활용한 Kubernetes 기반 AI/ML 모델 추론 환경 구성
   - **Basic 추론 환경**: FSx Lustre 및 S3 CSI 기반 모델 배포, 자동화 스크립트 제공
   - **KV Cache & Intelligent Routing**: Managed Tiered KV Cache와 Intelligent Routing을 활용한 고성능 추론 최적화
-  - **원클릭 JumpStart 배포**: 400+ 오픈소스 파운데이션 모델 (DeepSeek-R1, Mistral, Llama4 등) 지원
-  - **포괄적 관찰성**: 추론 전용 메트릭 및 플랫폼 메트릭 모니터링
-  - **엔터프라이즈 보안**: TLS 인증서 자동 관리, ALB 프로비저닝, HTTPS 지원
+
 ### v1.0.5
 - **FSDP2 & Lightning Pyxis+Enroot 지원**: 컨테이너 기반 분산 학습 환경을 FSDP2와 Lightning에도 확장
 
