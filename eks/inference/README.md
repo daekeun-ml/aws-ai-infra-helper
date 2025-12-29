@@ -79,7 +79,46 @@ HyperPod Inference Operator는 이러한 복잡성을 해결하여 인프라 설
 
 # FSx 탐색
 ./explore_fsx.sh
+
+# SageMaker JumpStart 모델 탐색
+./list-sagemaker-jumpstart-models.py
 ```
+
+### 📋 SageMaker JumpStart 모델 탐색 도구
+
+`list-sagemaker-jumpstart-models.py`는 SageMaker JumpStart에서 사용 가능한 모델 및 지원 인스턴스 타입을 검색하는 도구입니다.
+
+#### 사용법
+
+```bash
+# 모든 JumpStart 모델 목록 조회
+./list-sagemaker-jumpstart-models.py --list
+
+# 모델 총 개수만 확인
+./list-sagemaker-jumpstart-models.py --count
+
+# 특정 키워드로 모델 검색 (단순 목록)
+./list-sagemaker-jumpstart-models.py --search mistral
+./list-sagemaker-jumpstart-models.py --search llama
+
+# 인터랙티브 검색 (모델 선택 및 상세 정보)
+./list-sagemaker-jumpstart-models.py --search-interactive deepseek
+./list-sagemaker-jumpstart-models.py -si llama
+
+# 특정 모델의 지원 인스턴스 타입 확인
+./list-sagemaker-jumpstart-models.py --instances huggingface-llm-mistral-7b-instruct
+./list-sagemaker-jumpstart-models.py -i meta-textgeneration-llama-2-7b-f
+
+# 도움말 보기
+./list-sagemaker-jumpstart-models.py --help
+```
+
+#### 주요 기능
+- **전체 모델 목록**: JumpStart 모델 및 지원 인스턴스 타입 조회
+- **키워드 검색**: 모델명 기반 검색 (대소문자 구분 없음)
+- **인터랙티브 검색**: 검색 결과에서 모델 선택 및 상세 정보 확인
+- **인스턴스 타입 조회**: 모델별 기본/지원 인스턴스 타입 확인
+- **모델 개수 확인**: 사용 가능한 총 모델 수 표시
 
 ## 🚀 빠른 시작
 
