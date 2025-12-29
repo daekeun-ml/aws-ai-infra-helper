@@ -27,29 +27,57 @@ echo "📦 EKS Cluster: ${EKS_CLUSTER_NAME}"
 echo ""
 
 # Create access entry
-echo "🔐 Creating EKS access entry..."
-aws eks create-access-entry \
-  --cluster-name ${EKS_CLUSTER_NAME} \
-  --principal-arn ${USER_ARN} \
-  --region ${AWS_REGION} 2>&1 | grep -v "ResourceInUseException" || true
-echo "✅ Access entry created"
+echo "🔐 Checking EKS access entry..."
+if aws eks describe-access-entry --cluster-name ${EKS_CLUSTER_NAME} --principal-arn ${USER_ARN} --region ${AWS_REGION} &>/dev/null; then
+    echo "✅ Access entry already exists"
+else
+    echo "Creating new access entry..."
+    aws eks create-access-entry \
+      --cluster-name ${EKS_CLUSTER_NAME} \
+      --principal-arn ${USER_ARN} \
+      --region ${AWS_REGION}
+    echo "✅ Access entry created"
+fi
 echo ""
 
 # Associate admin policy
-echo "👑 Associating cluster admin policy..."
-aws eks associate-access-policy \
-  --cluster-name ${EKS_CLUSTER_NAME} \
-  --principal-arn ${USER_ARN} \
-  --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
-  --access-scope type=cluster \
-  --region ${AWS_REGION} 2>&1 | grep -v "ResourceInUseException" || true
-echo "✅ Admin policy associated"
+echo "👑 Checking cluster admin policy..."
+if aws eks list-associated-access-policies --cluster-name ${EKS_CLUSTER_NAME} --principal-arn ${USER_ARN} --region ${AWS_REGION} --query 'associatedAccessPolicies[?policyArn==`arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy`]' --output text | grep -q "AmazonEKSClusterAdminPolicy"; then
+    echo "✅ Admin policy already associated"
+else
+    echo "Associating admin policy..."
+    aws eks associate-access-policy \
+      --cluster-name ${EKS_CLUSTER_NAME} \
+      --principal-arn ${USER_ARN} \
+      --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
+      --access-scope type=cluster \
+      --region ${AWS_REGION}
+    echo "✅ Admin policy associated"
+fi
 echo ""
 
 # Update kubeconfig
 echo "⚙️  Updating kubeconfig..."
 aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}
 echo "✅ Kubeconfig updated"
+echo ""
+
+# Check and install kubectl if needed
+echo "🔧 Checking kubectl installation..."
+if ! command -v kubectl &> /dev/null; then
+    echo "⚠️  kubectl not found, installing..."
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    chmod +x kubectl
+    sudo mv kubectl /usr/local/bin/
+    if command -v kubectl &> /dev/null; then
+        echo "✅ kubectl installed successfully"
+    else
+        echo "❌ kubectl installation failed"
+        exit 1
+    fi
+else
+    echo "✅ kubectl is already installed"
+fi
 echo ""
 
 # Test kubectl access
