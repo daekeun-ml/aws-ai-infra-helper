@@ -14,56 +14,117 @@ fi
 echo "export AWS_REGION=${AWS_REGION}" >> env_vars
 echo "[INFO] AWS_REGION = ${AWS_REGION}"
 
-# Auto-detect STACK_ID if not set
-if [ -z ${STACK_ID} ]; then
-    echo "[INFO] STACK_ID not set, searching for CloudFormation stack..."
-    FOUND_STACK=$(aws cloudformation describe-stacks --region ${AWS_REGION} \
-        --query "Stacks[?starts_with(StackName, 'sagemaker-hyperpod-cluster-eks-') && Description=='Main Stack for EKS based HyperPod Cluster'].StackName | [0]" \
-        --output text 2>/dev/null)
+# Get SageMaker HyperPod clusters and match with EKS clusters
+if [ -z ${EKS_CLUSTER_NAME} ]; then
+    echo "[INFO] EKS_CLUSTER_NAME not set, searching for matching clusters..."
     
-    if [[ ! -z "${FOUND_STACK}" && "${FOUND_STACK}" != "None" ]]; then
-        echo "[INFO] Found stack: ${FOUND_STACK}"
-        read -p "Use this stack? (y/n): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            export STACK_ID=${FOUND_STACK}
-            echo "[INFO] Using STACK_ID = ${STACK_ID}"
-        else
-            echo "[ERROR] Please set STACK_ID environment variable manually"
-            return 1
-        fi
-    else
-        echo "[ERROR] No HyperPod EKS stack found"
-        echo "[ERROR] Please set STACK_ID environment variable manually"
+    # Get SageMaker HyperPod clusters
+    HYPERPOD_CLUSTERS=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[].ClusterName' --output text 2>/dev/null)
+    
+    # Get EKS clusters
+    EKS_CLUSTERS=$(aws eks list-clusters --region ${AWS_REGION} --query 'clusters[]' --output text 2>/dev/null)
+    
+    if [[ -z "${HYPERPOD_CLUSTERS}" ]]; then
+        echo "[ERROR] No SageMaker HyperPod clusters found in region ${AWS_REGION}"
         return 1
     fi
-else
-    echo "[INFO] Using existing STACK_ID = ${STACK_ID}"
-fi
-
-# Retrieve EKS CLUSTER Name from STACK_ID
-
-export EKS_CLUSTER_NAME=`aws cloudformation describe-stacks \
-    --stack-name $STACK_ID \
-    --query 'Stacks[0].Outputs[?OutputKey==\`OutputEKSClusterName\`].OutputValue' \
-    --region ${AWS_REGION} \
-    --output text`
-
-if [[ ! -z $EKS_CLUSTER_NAME ]]; then
+    
+    if [[ -z "${EKS_CLUSTERS}" ]]; then
+        echo "[ERROR] No EKS clusters found in region ${AWS_REGION}"
+        return 1
+    fi
+    
+    # Find matching clusters
+    MATCHED_CLUSTERS=()
+    for hyperpod in ${HYPERPOD_CLUSTERS}; do
+        for eks in ${EKS_CLUSTERS}; do
+            if [[ "${eks}" == *"${hyperpod}"* ]]; then
+                MATCHED_CLUSTERS+=("${eks}:${hyperpod}")
+            fi
+        done
+    done
+    
+    if [[ ${#MATCHED_CLUSTERS[@]} -eq 0 ]]; then
+        echo "[ERROR] No matching EKS clusters found for HyperPod clusters"
+        echo "[INFO] HyperPod clusters: ${HYPERPOD_CLUSTERS}"
+        echo "[INFO] EKS clusters: ${EKS_CLUSTERS}"
+        return 1
+    elif [[ ${#MATCHED_CLUSTERS[@]} -eq 1 ]]; then
+        # Single match found
+        SELECTED_MATCH="${MATCHED_CLUSTERS[0]}"
+        export EKS_CLUSTER_NAME="${SELECTED_MATCH%%:*}"
+        HYPERPOD_NAME="${SELECTED_MATCH##*:}"
+        echo "[INFO] Found matching cluster: EKS=${EKS_CLUSTER_NAME}, HyperPod=${HYPERPOD_NAME}"
+    else
+        # Multiple matches, let user choose
+        echo "[INFO] Multiple matching clusters found:"
+        for i in "${!MATCHED_CLUSTERS[@]}"; do
+            EKS_NAME="${MATCHED_CLUSTERS[$i]%%:*}"
+            HYPERPOD_NAME="${MATCHED_CLUSTERS[$i]##*:}"
+            echo "  $((i+1)). EKS: ${EKS_NAME} <-> HyperPod: ${HYPERPOD_NAME}"
+        done
+        
+        while true; do
+            read -p "Select cluster (1-${#MATCHED_CLUSTERS[@]}): " choice
+            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#MATCHED_CLUSTERS[@]}" ]; then
+                SELECTED_MATCH="${MATCHED_CLUSTERS[$((choice-1))]}"
+                export EKS_CLUSTER_NAME="${SELECTED_MATCH%%:*}"
+                HYPERPOD_NAME="${SELECTED_MATCH##*:}"
+                echo "[INFO] Selected: EKS=${EKS_CLUSTER_NAME}, HyperPod=${HYPERPOD_NAME}"
+                break
+            else
+                echo "[ERROR] Invalid selection. Please enter a number between 1 and ${#MATCHED_CLUSTERS[@]}"
+            fi
+        done
+    fi
+    
     echo "export EKS_CLUSTER_NAME=${EKS_CLUSTER_NAME}" >> env_vars
     echo "[INFO] EKS_CLUSTER_NAME = ${EKS_CLUSTER_NAME}"
 else
-    echo "[ERROR] failed to retrieve EKS_CLUSTER_NAME"
-    return 1
+    echo "[INFO] Using existing EKS_CLUSTER_NAME = ${EKS_CLUSTER_NAME}"
+fi
+
+# Try to find STACK_ID from EKS cluster tags
+if [ -z ${STACK_ID} ]; then
+    echo "[INFO] STACK_ID not set, searching from EKS cluster tags..."
+    STACK_FROM_TAGS=$(aws eks describe-cluster --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION} \
+        --query 'cluster.tags."aws:cloudformation:stack-name"' --output text 2>/dev/null)
+    
+    if [[ ! -z "${STACK_FROM_TAGS}" && "${STACK_FROM_TAGS}" != "None" ]]; then
+        # Extract main stack name from nested stack name
+        MAIN_STACK_NAME=$(echo "${STACK_FROM_TAGS}" | sed 's/-[^-]*Stack-[^-]*$//')
+        export STACK_ID=${MAIN_STACK_NAME}
+        echo "export STACK_ID=${STACK_ID}" >> env_vars
+        echo "[INFO] Found main STACK_ID from EKS tags: ${STACK_ID}"
+    else
+        echo "[WARNING] Could not find STACK_ID from EKS cluster tags"
+        echo "[INFO] Searching for CloudFormation stack..."
+        FOUND_STACK=$(aws cloudformation describe-stacks --region ${AWS_REGION} \
+            --query "Stacks[?starts_with(StackName, 'sagemaker-hyperpod-cluster-eks-') && Description=='Main Stack for EKS based HyperPod Cluster'].StackName | [0]" \
+            --output text 2>/dev/null)
+        
+        if [[ ! -z "${FOUND_STACK}" && "${FOUND_STACK}" != "None" ]]; then
+            export STACK_ID=${FOUND_STACK}
+            echo "export STACK_ID=${STACK_ID}" >> env_vars
+            echo "[INFO] Found stack: ${STACK_ID}"
+        else
+            echo "[WARNING] No CloudFormation stack found, continuing without STACK_ID"
+        fi
+    fi
+else
+    echo "[INFO] Using existing STACK_ID = ${STACK_ID}"
+    echo "export STACK_ID=${STACK_ID}" >> env_vars
 fi
 
 # Retrieve EKS CLUSTER ARN
 if [[ -z "${EKS_CLUSTER_ARN}" ]]; then
-    export EKS_CLUSTER_ARN=`aws cloudformation describe-stacks \
-        --stack-name $STACK_ID \
-        --query 'Stacks[0].Outputs[?OutputKey==\`OutputEKSClusterArn\`].OutputValue' \
-        --region ${AWS_REGION} \
-        --output text`
+    if [[ ! -z "${STACK_ID}" ]]; then
+        export EKS_CLUSTER_ARN=`aws cloudformation describe-stacks \
+            --stack-name $STACK_ID \
+            --query 'Stacks[0].Outputs[?OutputKey==\`OutputEKSClusterArn\`].OutputValue' \
+            --region ${AWS_REGION} \
+            --output text`
+    fi
 
     if [[ -z "${EKS_CLUSTER_ARN}" && ! -z "${EKS_CLUSTER_NAME}" ]]; then
         if aws eks describe-cluster --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION} &>/dev/null; then
@@ -91,7 +152,7 @@ else
 fi
 
 # Check if S3_BUCKET_NAME is already set and not empty
-if [[ -z "${S3_BUCKET_NAME}" ]]; then
+if [[ -z "${S3_BUCKET_NAME}" && ! -z "${STACK_ID}" ]]; then
     export S3_BUCKET_NAME=`aws cloudformation describe-stacks \
         --stack-name $STACK_ID \
         --query 'Stacks[0].Outputs[?OutputKey==\`OutputS3BucketName\`].OutputValue' \
@@ -102,16 +163,15 @@ if [[ -z "${S3_BUCKET_NAME}" ]]; then
         echo "export S3_BUCKET_NAME=${S3_BUCKET_NAME}" >> env_vars
         echo "[INFO] S3_BUCKET_NAME = ${S3_BUCKET_NAME}"
     else
-        echo "[ERROR] failed to retrieve S3_BUCKET_NAME"
-        return 1
+        echo "[WARNING] failed to retrieve S3_BUCKET_NAME from CloudFormation"
     fi
-else
+elif [[ ! -z "${S3_BUCKET_NAME}" ]]; then
     echo "[INFO] Using existing S3_BUCKET_NAME = ${S3_BUCKET_NAME}"
     echo "export S3_BUCKET_NAME=${S3_BUCKET_NAME}" >> env_vars
 fi
 
 # Check if EXECUTION_ROLE is already set and not empty
-if [[ -z "${EXECUTION_ROLE}" ]]; then
+if [[ -z "${EXECUTION_ROLE}" && ! -z "${STACK_ID}" ]]; then
     export EXECUTION_ROLE=`aws cloudformation describe-stacks \
         --stack-name $STACK_ID \
         --query 'Stacks[0].Outputs[?OutputKey==\`OutputSageMakerIAMRoleArn\`].OutputValue' \
@@ -122,16 +182,15 @@ if [[ -z "${EXECUTION_ROLE}" ]]; then
         echo "export EXECUTION_ROLE=${EXECUTION_ROLE}" >> env_vars
         echo "[INFO] EXECUTION_ROLE = ${EXECUTION_ROLE}"
     else
-        echo "[ERROR] failed to retrieve EXECUTION_ROLE"
-        return 1
+        echo "[WARNING] failed to retrieve EXECUTION_ROLE from CloudFormation"
     fi
-else
+elif [[ ! -z "${EXECUTION_ROLE}" ]]; then
     echo "[INFO] Using existing EXECUTION_ROLE = ${EXECUTION_ROLE}"
     echo "export EXECUTION_ROLE=${EXECUTION_ROLE}" >> env_vars
 fi
 
 # Check if VPC_ID is already set and not empty
-if [[ -z "${VPC_ID}" ]]; then
+if [[ -z "${VPC_ID}" && ! -z "${STACK_ID}" ]]; then
     export VPC_ID=`aws cloudformation describe-stacks \
         --stack-name $STACK_ID \
         --query 'Stacks[0].Outputs[?OutputKey==\`OutputVpcId\`].OutputValue' \
@@ -142,16 +201,15 @@ if [[ -z "${VPC_ID}" ]]; then
         echo "export VPC_ID=${VPC_ID}" >> env_vars
         echo "[INFO] VPC_ID = ${VPC_ID}"
     else
-        echo "[ERROR] failed to retrieve VPC_ID"
-        return 1
+        echo "[WARNING] failed to retrieve VPC_ID from CloudFormation"
     fi
-else
+elif [[ ! -z "${VPC_ID}" ]]; then
     echo "[INFO] Using existing VPC_ID = ${VPC_ID}"
     echo "export VPC_ID=${VPC_ID}" >> env_vars
 fi
 
 # Check if PRIVATE_SUBNET_ID is already set and not empty
-if [[ -z "${PRIVATE_SUBNET_ID}" ]]; then
+if [[ -z "${PRIVATE_SUBNET_ID}" && ! -z "${STACK_ID}" ]]; then
     export PRIVATE_SUBNET_ID=`aws cloudformation describe-stacks \
         --stack-name $STACK_ID \
         --query 'Stacks[0].Outputs[?OutputKey==\`OutputPrivateSubnetIds\`].OutputValue' \
@@ -162,16 +220,15 @@ if [[ -z "${PRIVATE_SUBNET_ID}" ]]; then
         echo "export PRIVATE_SUBNET_ID=${PRIVATE_SUBNET_ID}" >> env_vars
         echo "[INFO] PRIVATE_SUBNET_ID = ${PRIVATE_SUBNET_ID}"
     else
-        echo "[ERROR] failed to retrieve PRIVATE_SUBNET_ID"
-        return 1
+        echo "[WARNING] failed to retrieve PRIVATE_SUBNET_ID from CloudFormation"
     fi
-else
+elif [[ ! -z "${PRIVATE_SUBNET_ID}" ]]; then
     echo "[INFO] Using existing PRIVATE_SUBNET_ID = ${PRIVATE_SUBNET_ID}"
     echo "export PRIVATE_SUBNET_ID=${PRIVATE_SUBNET_ID}" >> env_vars
 fi
 
 # Check if SECURITY_GROUP_ID is already set and not empty
-if [[ -z "${SECURITY_GROUP_ID}" ]]; then
+if [[ -z "${SECURITY_GROUP_ID}" && ! -z "${STACK_ID}" ]]; then
     export SECURITY_GROUP_ID=`aws cloudformation describe-stacks \
         --stack-name $STACK_ID \
         --query 'Stacks[0].Outputs[?OutputKey==\`OutputSecurityGroupId\`].OutputValue' \
@@ -182,19 +239,22 @@ if [[ -z "${SECURITY_GROUP_ID}" ]]; then
         echo "export SECURITY_GROUP_ID=${SECURITY_GROUP_ID}" >> env_vars
         echo "[INFO] SECURITY_GROUP_ID = ${SECURITY_GROUP_ID}"
     else
-        echo "[ERROR] failed to retrieve SECURITY_GROUP_ID"
-        return 1
+        echo "[WARNING] failed to retrieve SECURITY_GROUP_ID from CloudFormation"
     fi
-else
+elif [[ ! -z "${SECURITY_GROUP_ID}" ]]; then
     echo "[INFO] Using existing SECURITY_GROUP_ID = ${SECURITY_GROUP_ID}"
     echo "export SECURITY_GROUP_ID=${SECURITY_GROUP_ID}" >> env_vars
 fi
 
 # Retrieve HyperPod cluster information
-CLUSTER_NAME=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[0].ClusterName' --output text 2>/dev/null | head -1)
+if [[ ! -z "${HYPERPOD_NAME}" ]]; then
+    CLUSTER_NAME="${HYPERPOD_NAME}"
+else
+    CLUSTER_NAME=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[0].ClusterName' --output text 2>/dev/null | head -1)
+fi
 
 if [[ ! -z "${CLUSTER_NAME}" && "${CLUSTER_NAME}" != "None" ]]; then
-    echo "[INFO] Found HyperPod cluster: ${CLUSTER_NAME}"
+    echo "[INFO] Using HyperPod cluster: ${CLUSTER_NAME}"
     
     # Get instance groups from cluster
     INSTANCE_GROUPS=$(aws sagemaker describe-cluster --cluster-name ${CLUSTER_NAME} --region ${AWS_REGION} --query 'InstanceGroups' --output json 2>/dev/null)
