@@ -157,6 +157,7 @@ add_keypair_to_cluster() {
         read -p "> " ADD_KEYPAIR
         if [[ $ADD_KEYPAIR == "yes" ]]; then
             echo "Adding ... ${PUBLIC_KEY}"
+            # HyperPod clusters are Linux-based, so use Linux sed syntax
             command="sed -i \$a$(escape_spaces "$PUBLIC_KEY") /fsx/ubuntu/.ssh/authorized_keys"
             aws ssm start-session --target sagemaker-cluster:${cluster_id}_${node_group}-${instance_id}  --document-name AmazonEKS-ExecuteNonInteractiveCommand  --parameters command="$command"
             echo "✅ Your SSH public key ~/.ssh/id_rsa.pub has been added to the cluster."

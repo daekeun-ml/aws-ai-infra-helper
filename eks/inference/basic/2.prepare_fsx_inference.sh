@@ -18,9 +18,18 @@ echo "🔧 Creating FSX copy job configuration..."
 cp template/copy_to_fsx_lustre_template.yaml copy_to_fsx_lustre.yaml
 
 # Replace placeholders in copy job
-sed -i '' "s|<YOUR_ACCESS_KEY_ID>|$AWS_ACCESS_KEY_ID|g" copy_to_fsx_lustre.yaml
-sed -i '' "s|<YOUR_SECRET_ACCESS_KEY>|$AWS_SECRET_ACCESS_KEY|g" copy_to_fsx_lustre.yaml
-sed -i '' "s|<YOUR_AWS_REGION>|$AWS_DEFAULT_REGION|g" copy_to_fsx_lustre.yaml
+# Detect OS and use appropriate sed syntax
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s|<YOUR_ACCESS_KEY_ID>|$AWS_ACCESS_KEY_ID|g" copy_to_fsx_lustre.yaml
+    sed -i '' "s|<YOUR_SECRET_ACCESS_KEY>|$AWS_SECRET_ACCESS_KEY|g" copy_to_fsx_lustre.yaml
+    sed -i '' "s|<YOUR_AWS_REGION>|$AWS_DEFAULT_REGION|g" copy_to_fsx_lustre.yaml
+else
+    # Linux
+    sed -i "s|<YOUR_ACCESS_KEY_ID>|$AWS_ACCESS_KEY_ID|g" copy_to_fsx_lustre.yaml
+    sed -i "s|<YOUR_SECRET_ACCESS_KEY>|$AWS_SECRET_ACCESS_KEY|g" copy_to_fsx_lustre.yaml
+    sed -i "s|<YOUR_AWS_REGION>|$AWS_DEFAULT_REGION|g" copy_to_fsx_lustre.yaml
+fi
 
 echo "✅ FSX copy job configuration created: copy_to_fsx_lustre.yaml"
 
@@ -54,8 +63,16 @@ echo "🔧 Creating inference deployment configuration..."
 cp template/deploy_fsx_lustre_inference_operator_template.yaml deploy_fsx_lustre_inference_operator.yaml
 
 # Replace placeholders in inference deployment
-sed -i '' "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_fsx_lustre_inference_operator.yaml
-sed -i '' "s|<YOUR_FSX_FILESYSTEM>|$FSX_FILESYSTEM|g" deploy_fsx_lustre_inference_operator.yaml
+# Detect OS and use appropriate sed syntax
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_fsx_lustre_inference_operator.yaml
+    sed -i '' "s|<YOUR_FSX_FILESYSTEM>|$FSX_FILESYSTEM|g" deploy_fsx_lustre_inference_operator.yaml
+else
+    # Linux
+    sed -i "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_fsx_lustre_inference_operator.yaml
+    sed -i "s|<YOUR_FSX_FILESYSTEM>|$FSX_FILESYSTEM|g" deploy_fsx_lustre_inference_operator.yaml
+fi
 
 echo "✅ Inference deployment configuration created: deploy_fsx_lustre_inference_operator.yaml"
 

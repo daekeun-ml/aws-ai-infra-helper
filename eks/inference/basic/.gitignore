@@ -1,0 +1,2 @@
+copy_to_fsx_lustre.yaml
+deploy_fsx_lustre_inference_operator.yaml

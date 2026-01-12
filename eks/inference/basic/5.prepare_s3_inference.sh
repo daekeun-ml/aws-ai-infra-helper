@@ -40,9 +40,18 @@ echo "📝 Creating deployment configuration..."
 cp template/deploy_S3_inference_operator_template.yaml deploy_S3_inference_operator.yaml
 
 # Replace placeholders
-sed -i '' "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_S3_inference_operator.yaml
-sed -i '' "s|<YOUR_S3_BUCKET>|$S3_BUCKET|g" deploy_S3_inference_operator.yaml
-sed -i '' "s|<YOUR_REGION>|$AWS_REGION|g" deploy_S3_inference_operator.yaml
+# Detect OS and use appropriate sed syntax
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_S3_inference_operator.yaml
+    sed -i '' "s|<YOUR_S3_BUCKET>|$S3_BUCKET|g" deploy_S3_inference_operator.yaml
+    sed -i '' "s|<YOUR_REGION>|$AWS_REGION|g" deploy_S3_inference_operator.yaml
+else
+    # Linux
+    sed -i "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_S3_inference_operator.yaml
+    sed -i "s|<YOUR_S3_BUCKET>|$S3_BUCKET|g" deploy_S3_inference_operator.yaml
+    sed -i "s|<YOUR_REGION>|$AWS_REGION|g" deploy_S3_inference_operator.yaml
+fi
 
 echo "✅ Deployment file created successfully!"
 echo "📍 Instance Type: $INSTANCE_TYPE"

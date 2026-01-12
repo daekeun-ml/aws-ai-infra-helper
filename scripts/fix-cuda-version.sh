@@ -68,8 +68,16 @@ read UPDATE_BASHRC
 if [[ "$UPDATE_BASHRC" =~ ^[Yy]$ ]]; then
     BASHRC="$HOME/.bashrc"
     if [ -f "$BASHRC" ]; then
-        sed -i '/# CUDA/d' "$BASHRC"
-        sed -i '/cuda/d' "$BASHRC"
+        # Detect OS and use appropriate sed syntax
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed -i '' '/# CUDA/d' "$BASHRC"
+            sed -i '' '/cuda/d' "$BASHRC"
+        else
+            # Linux
+            sed -i '/# CUDA/d' "$BASHRC"
+            sed -i '/cuda/d' "$BASHRC"
+        fi
     fi
     
     cat >> "$BASHRC" << EOF
