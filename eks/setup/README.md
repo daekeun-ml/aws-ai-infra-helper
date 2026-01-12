@@ -13,7 +13,7 @@ HyperPod EKS 클러스터 생성 후 필요한 추가 설정을 위한 스크립
 ### 1. 환경 설정 생성
 
 ```bash
-source 1.create-config.sh
+./1.create-config.sh
 ```
 
 - AWS Region 자동 감지

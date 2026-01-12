@@ -130,7 +130,7 @@ aws-ai-infra-helper/
 │   └── dcgm_metrics_config/      # DCGM 메트릭 설정
 │
 └── eks/                  # EKS 관련 도구 및 가이드
-    ├── training/         # EKS 학습 클러스터 설정
+    ├── setup/         # EKS 학습 클러스터 설정
     │   ├── README.md             # EKS 학습 가이드
     │   ├── 1.create-config.sh    # 환경 설정 생성
     │   ├── 2.setup-eks-access.sh # EKS 접근 권한 설정

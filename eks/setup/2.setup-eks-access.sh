@@ -92,6 +92,8 @@ else
 fi
 
 # Test helm access
+echo "⏳ Waiting for EKS permissions to propagate..."
+sleep 15
 echo "🎡 Testing helm access..."
 if helm list -n kube-system &>/dev/null; then
     echo "✅ helm access verified!"
