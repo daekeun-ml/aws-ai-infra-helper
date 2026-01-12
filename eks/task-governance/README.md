@@ -88,6 +88,8 @@ Kubernetes 관리자는 이러한 리소스의 상태를 수정할 수 있는 �
 ## Task Governance 활성화
 
 ### 사전 요구사항
+- SageMaker HyperPod EKS cluster
+- EKS 접근 권한 및 환경 변수: `../setup/README.md` 참조
 - 기존 Kueue 설치가 없어야 함 (Task Governance 애드온 설치 전에 제거 필요)
 
 ### 설치 단계
@@ -102,13 +104,13 @@ Kubernetes 관리자는 이러한 리소스의 상태를 수정할 수 있는 �
 **SageMaker HyperPod task governance EKS 애드온**을 설치하려면 다음 명령을 실행해주세요:
 
 ```bash
-aws eks create-addon --region $REGION --cluster-name $EKS_CLUSTER_NAME --addon-name amazon-sagemaker-hyperpod-taskgovernance
+aws eks create-addon --region $AWS_REGION --cluster-name $EKS_CLUSTER_NAME --addon-name amazon-sagemaker-hyperpod-taskgovernance
 ```
 
 설치 성공 여부를 확인하려면:
 
 ```bash
-aws eks describe-addon --region $REGION --cluster-name $EKS_CLUSTER_NAME --addon-name amazon-sagemaker-hyperpod-taskgovernance
+aws eks describe-addon --region $AWS_REGION --cluster-name $EKS_CLUSTER_NAME --addon-name amazon-sagemaker-hyperpod-taskgovernance
 ```
 
 설치가 성공했다면 출력에서 설치된 애드온의 세부 정보를 확인할 수 있습니다.
@@ -132,7 +134,7 @@ aws eks describe-addon --region $REGION --cluster-name $EKS_CLUSTER_NAME --addon
 
 ```bash
 aws sagemaker \
-    --region $REGION \
+    --region $AWS_REGION \
     create-cluster-scheduler-config \
     --name "example-cluster-scheduler-config" \
     --cluster-arn "<HyperPod ClusterArn 입력>" \
@@ -149,7 +151,7 @@ aws sagemaker \
 
 ```bash
 aws sagemaker \
-    --region $REGION \
+    --region $AWS_REGION \
     create-compute-quota \
     --name "Team-A-Quota-Allocation" \
     --cluster-arn "<HyperPod ClusterArn 입력>" \
@@ -161,7 +163,7 @@ aws sagemaker \
 **Team B 할당량 할당** (ml.g5.12xlarge x 2ea 할당 -> 8 GPUs)
 ```bash
 aws sagemaker \
-    --region $REGION \
+    --region $AWS_REGION \
     create-compute-quota \
     --name "Team-B-Quota-Allocation" \
     --cluster-arn "<HyperPod ClusterArn 입력>" \

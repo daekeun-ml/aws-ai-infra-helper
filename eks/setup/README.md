@@ -44,6 +44,13 @@ HyperPod EKS 클러스터 생성 후 필요한 추가 설정을 위한 스크립
 - Kubeflow Training Operator 상태 확인
 - 스토리지 클래스 및 권한 검증
 
+
+### 4. 환경 변수 로드
+
+```bash
+source ./env_vars
+```
+
 ## 유틸리티 스크립트
 
 ### NodeGroup 정보 확인
