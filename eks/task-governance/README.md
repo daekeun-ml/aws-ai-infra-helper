@@ -93,7 +93,9 @@ Kubernetes 관리자는 이러한 리소스의 상태를 수정할 수 있는 �
 ### 설치 단계
 
 #### AWS 콘솔
-[SageMaker HyperPod 콘솔](https://console.aws.amazon.com/sagemaker/home#/hyperpod)에서 클러스터를 선택하고 "Task governance" 탭에서 애드온을 활성화할 수 있습니다.
+[SageMaker HyperPod 콘솔](https://us-west-2.console.aws.amazon.com/sagemaker/home#/cluster-management) 에서 클러스터를 선택하고 "Dasoboard" 탭에서 Amazon SageMaker HyperPod task governance 항목의 **Quick install** 버튼을 클릭하면 애드온을 활성화할 수 있습니다.
+
+![task-governance-install](./imgs/task-governance-install.png)
 
 #### AWS CLI
 
@@ -143,7 +145,7 @@ aws sagemaker \
 
 **Team A 할당량 할당** (ml.g5.12xlarge에서 2GPU만 할당. 인스턴스별이 아니라 GPU 단위로도 쪼갤 수 있음. 마찬가지로 vCPU, vCPU memory 단위로도 쪼갤 수 있음)
 
-![img](./imgs/task-governance-allocation.png)
+![task-governance-allocation](./imgs/task-governance-allocation.png)
 
 ```bash
 aws sagemaker \
@@ -232,7 +234,7 @@ kubectl get pods -n hyperpod-ns-team-b
 
 `Tasks` 탭을 클릭하면 `imagenet-gpu-team-a-1` 작업이 중단되고 (Suspended), `imagenet-gpu-team-b-2` 작업이 진행 중 (Running) 임을 알 수 있습니다.
 
-![](./imgs/task-governance-team-a-suspended.png)
+![task-governance-team-a-suspended](./imgs/task-governance-team-a-suspended.png)
 
 AWS CLI로 로그를 확인해 보면 더 이상 Team A의 training PoD가 존재하지 않음을 알 수 있습니다.
 ```bash
