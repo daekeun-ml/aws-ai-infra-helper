@@ -23,33 +23,41 @@ echo "[INFO] AWS_REGION = ${AWS_REGION}"
 # Get HyperPod cluster name if not set
 if [ -z "${HYPERPOD_CLUSTER_NAME}" ]; then
     echo "[INFO] HYPERPOD_CLUSTER_NAME not set, searching for HyperPod clusters..."
-    CLUSTERS=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[].ClusterName' --output text 2>/dev/null)
+    CLUSTERS=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[?ClusterStatus==`InService`].ClusterName' --output text 2>/dev/null)
     
-    if [[ ! -z "${CLUSTERS}" ]]; then
-        echo "[INFO] Found HyperPod clusters:"
-        select cluster in ${CLUSTERS}; do
-            if [[ -n "$cluster" ]]; then
-                export HYPERPOD_CLUSTER_NAME="$cluster"
-                echo "[INFO] Selected HYPERPOD_CLUSTER_NAME = ${HYPERPOD_CLUSTER_NAME}"
-                break
-            else
-                echo "Invalid selection. Please try again."
-            fi
-        done
+    if [[ ! -z "${CLUSTERS}" && "${CLUSTERS}" != "None" ]]; then
+        echo "[INFO] Found HyperPod clusters: ${CLUSTERS}"
+        # If only one cluster, use it automatically
+        CLUSTER_COUNT=$(echo ${CLUSTERS} | wc -w)
+        if [ ${CLUSTER_COUNT} -eq 1 ]; then
+            export HYPERPOD_CLUSTER_NAME="${CLUSTERS}"
+            echo "[INFO] Auto-selected HYPERPOD_CLUSTER_NAME = ${HYPERPOD_CLUSTER_NAME}"
+        else
+            echo "[INFO] Multiple clusters found, please select:"
+            select cluster in ${CLUSTERS}; do
+                if [[ -n "$cluster" ]]; then
+                    export HYPERPOD_CLUSTER_NAME="$cluster"
+                    echo "[INFO] Selected HYPERPOD_CLUSTER_NAME = ${HYPERPOD_CLUSTER_NAME}"
+                    break
+                else
+                    echo "Invalid selection. Please try again."
+                fi
+            done
+        fi
     else
         echo "[ERROR] No HyperPod clusters found"
-        return 1
+        exit 1
     fi
 fi
 
 # Find EKS cluster name that contains the HyperPod cluster name
 export EKS_CLUSTER_NAME=$(aws eks list-clusters --region ${AWS_REGION} \
-    --query "clusters[?contains(@, '${HYPERPOD_CLUSTER_NAME}')] | [0]" \
-    --output text 2>/dev/null)
+    --query "clusters[?contains(@, '${HYPERPOD_CLUSTER_NAME}')]" \
+    --output text 2>/dev/null | head -1)
 
 if [[ -z "${EKS_CLUSTER_NAME}" || "${EKS_CLUSTER_NAME}" == "None" ]]; then
     echo "[ERROR] Could not find EKS cluster for HyperPod cluster ${HYPERPOD_CLUSTER_NAME}"
-    return 1
+    exit 1
 fi
 
 echo "export EKS_CLUSTER_NAME=${EKS_CLUSTER_NAME}" >> env_vars
@@ -64,7 +72,7 @@ export STACK_ID=$(aws cloudformation list-stacks --region ${AWS_REGION} \
 
 if [[ -z "${STACK_ID}" || "${STACK_ID}" == "None" ]]; then
     echo "[ERROR] Could not find CloudFormation stack for ${EKS_CLUSTER_NAME}"
-    return 1
+    exit 1
 fi
 
 echo "export STACK_ID=${STACK_ID}" >> env_vars

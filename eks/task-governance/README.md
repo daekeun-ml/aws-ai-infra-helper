@@ -32,9 +32,6 @@ HyperPod Task governance는 Kubernetes 네이티브 작업 큐잉, 스케줄링 
 - **ResourceFlavors**: 리소스 유형 및 특성 정의
 - **ValidatingAdmissionPolicies**: 작업 제출 시 검증 정책
 
-### 관리 권한
-Kubernetes 관리자는 이러한 리소스의 상태를 수정할 수 있는 유연성을 가지고 있지만, SageMaker AI 관리 리소스에 대한 모든 변경 사항은 서비스에 의해 업데이트되고 덮어쓰여질 수 있습니다.
-
 ## 비즈니스 가치
 
 ### 비용 최적화
@@ -116,21 +113,53 @@ aws eks describe-addon --region $AWS_REGION --cluster-name $EKS_CLUSTER_NAME --a
 설치가 성공했다면 출력에서 설치된 애드온의 세부 정보를 확인할 수 있습니다.
 
 
-## 예제 실행을 위한 설정
+## 예제 실행을 위한 설정 
 
-### 클러스터 정책 및 컴퓨팅 할당 설정
+### 개요 
 
 예제를 실행하기 전에 클러스터 정책을 설정하고 팀별 컴퓨팅 할당을 정의해야 합니다.
 
-이 예제는 **2 x ml.g5.12xlarge 인스턴스**와 두 개의 팀이 있는 클러스터를 가정합니다:
-- **Team A**: 소규모 모델을 트레이닝하는 팀으로, 상대적으로 적은 리소스를 필요로 합니다
-- **Team B**: 대규모 모델을 트레이닝하는 팀으로, 많은 GPU 리소스를 필요로 합니다
+이 예제는 Workshop Studio 실습을 위해 두 가지 인스턴스 타입 옵션을 지원합니다. 실제 여러분의 워크로드 적용 시에는 본 예제의 코드 스니펫과 가이드를 참고하여 코드를 수정해 주세요.
+
+#### 옵션 1: 2 x `ml.g5.8xlarge` 인스턴스 (총 2 GPU)
+- **Team A**: 1 GPU 할당 (ml.g5.8xlarge x 1개)
+- **Team B**: 1 GPU 할당 (ml.g5.8xlarge x 2개)
+- **리소스 공유**: 각 팀이 상대방의 유휴 리소스를 차용 가능
+
+#### 옵션 2: 2 x `ml.g5.12xlarge` 인스턴스 (총 8 GPU)
+- **Team A**: 2 GPU 할당 (ml.g5.12xlarge에서 Accelerators=2: 2 GPU)
+- **Team B**: 8 GPU 할당 (ml.g5.12xlarge x 2개)
+- **리소스 공유**: 각 팀이 상대방의 유휴 리소스를 차용 가능
+
+두 팀 모두:
+- **Fair-share 가중치**: 100 (동등한 우선순위)
+- **차용 한도**: 100% (자신의 할당량만큼 추가 차용 가능)
+- **선점 정책**: LowerPriority (낮은 우선순위 작업 선점 가능)
 
 클러스터 정책은 기본 FIFO(First-In-First-Out) 동작 대신 작업 순위를 사용하여 높은 우선순위의 작업이 낮은 우선순위 작업을 선점할 수 있도록 합니다.
 
-#### 클러스터 정책 생성
+## 클러스터 정책 및 컴퓨팅 할당 설정
 
-작업 우선순위 지정 방식과 유휴 컴퓨팅 할당 방식을 업데이트하려면 다음 구성을 사용하여 클러스터 정책을 적용해주세요:
+### 자동 설정 (권장)
+
+```bash
+./setup-task-governance.sh
+```
+
+스크립트 실행 시:
+1. HyperPod 클러스터를 자동으로 감지하거나 선택할 수 있습니다.
+2. 인스턴스 타입을 선택합니다 (`ml.g5.8xlarge` 또는 `ml.g5.12xlarge`)
+3. 클러스터 정책과 두 팀의 컴퓨팅 할당을 자동으로 생성합니다.
+
+**참고**: 기존 설정이 있는 경우 삭제하지 않고 그대로 유지됩니다.
+
+### 수동 설정
+
+수동으로 설정하려면 다음 단계를 따르세요:
+
+#### 1. 클러스터 정책 생성
+
+작업 우선순위 지정 방식과 유휴 컴퓨팅 할당 방식을 업데이트하려면 다음 구성을 사용하여 클러스터 정책을 적용해 주세요.
 
 ```bash
 aws sagemaker \
@@ -141,13 +170,13 @@ aws sagemaker \
     --scheduler-config "PriorityClasses=[{Name=inference,Weight=90},{Name=experimentation,Weight=80},{Name=fine-tuning,Weight=50},{Name=training,Weight=70}],FairShare=Enabled"
 ```
 
-#### 컴퓨팅 할당 생성
+#### 2. 컴퓨팅 할당 생성
 
-각 팀은 컴퓨팅 용량을 관리하기 위해 컴퓨팅 할당이 필요합니다. 두 팀 모두 2개의 인스턴스가 할당되고, 100의 공정 공유 가중치와 50%의 차용 기능을 갖습니다.
+**ml.g5.8xlarge 환경의 경우:**
 
-**Team A 할당량 할당** (ml.g5.12xlarge에서 2GPU만 할당. 인스턴스별이 아니라 GPU 단위로도 쪼갤 수 있음. 마찬가지로 vCPU, vCPU memory 단위로도 쪼갤 수 있음)
+**Team A 할당량 할당** (`ml.g5.8xlarge` x 1개 = 1 GPU. 인스턴스별이 아니라 GPU 단위로도 쪼갤 수 있음. 마찬가지로 vCPU, vCPU memory 단위로도 쪼갤 수 있음)
 
-![task-governance-allocation](./imgs/task-governance-allocation.png)
+![task-governance-allocation-single-gpu](./imgs/task-governance-allocation-single-gpu.png)
 
 ```bash
 aws sagemaker \
@@ -155,19 +184,48 @@ aws sagemaker \
     create-compute-quota \
     --name "Team-A-Quota-Allocation" \
     --cluster-arn "<HyperPod ClusterArn 입력>" \
-    --compute-quota-config "ComputeQuotaResources=[{InstanceType=ml.g5.12xlarge,Accelerators=2}],ResourceSharingConfig={Strategy=LendAndBorrow,BorrowLimit=50},PreemptTeamTasks=LowerPriority" \
+    --compute-quota-config "ComputeQuotaResources=[{InstanceType=ml.g5.8xlarge,Count=1}],ResourceSharingConfig={Strategy=LendAndBorrow,BorrowLimit=100},PreemptTeamTasks=LowerPriority" \
     --activation-state "Enabled" \
     --compute-quota-target "TeamName=team-a,FairShareWeight=100"
 ```
 
-**Team B 할당량 할당** (ml.g5.12xlarge x 2ea 할당 -> 8 GPUs)
+**Team B 할당량 할당** (`ml.g5.8xlarge` x 2개 = 2 GPU)
 ```bash
 aws sagemaker \
     --region $AWS_REGION \
     create-compute-quota \
     --name "Team-B-Quota-Allocation" \
     --cluster-arn "<HyperPod ClusterArn 입력>" \
-    --compute-quota-config "ComputeQuotaResources=[{InstanceType=ml.g5.12xlarge,Count=2}],ResourceSharingConfig={Strategy=LendAndBorrow,BorrowLimit=50},PreemptTeamTasks=LowerPriority" \
+    --compute-quota-config "ComputeQuotaResources=[{InstanceType=ml.g5.8xlarge,Count=2}],ResourceSharingConfig={Strategy=LendAndBorrow,BorrowLimit=100},PreemptTeamTasks=LowerPriority" \
+    --activation-state "Enabled" \
+    --compute-quota-target "TeamName=team-b,FairShareWeight=100"
+```
+
+**ml.g5.12xlarge 환경의 경우:**
+
+**Team A 할당량 할당** (`ml.g5.12xlarge`에서 2GPU만 할당. 인스턴스별이 아니라 GPU 단위로도 쪼갤 수 있음. 마찬가지로 vCPU, vCPU memory 단위로도 쪼갤 수 있음)
+
+![task-governance-allocation-multi-gpu](./imgs/task-governance-allocation-multi-gpu.png)
+
+```bash
+aws sagemaker \
+    --region $AWS_REGION \
+    create-compute-quota \
+    --name "Team-A-Quota-Allocation" \
+    --cluster-arn "<HyperPod ClusterArn 입력>" \
+    --compute-quota-config "ComputeQuotaResources=[{InstanceType=ml.g5.12xlarge,Accelerators=2}],ResourceSharingConfig={Strategy=LendAndBorrow,BorrowLimit=100},PreemptTeamTasks=LowerPriority" \
+    --activation-state "Enabled" \
+    --compute-quota-target "TeamName=team-a,FairShareWeight=100"
+```
+
+**Team B 할당량 할당** (`ml.g5.12xlarge` x 2ea 할당 -> 8 GPUs)
+```bash
+aws sagemaker \
+    --region $AWS_REGION \
+    create-compute-quota \
+    --name "Team-B-Quota-Allocation" \
+    --cluster-arn "<HyperPod ClusterArn 입력>" \
+    --compute-quota-config "ComputeQuotaResources=[{InstanceType=ml.g5.12xlarge,Count=2}],ResourceSharingConfig={Strategy=LendAndBorrow,BorrowLimit=100},PreemptTeamTasks=LowerPriority" \
     --activation-state "Enabled" \
     --compute-quota-target "TeamName=team-b,FairShareWeight=100"
 ```
@@ -178,19 +236,36 @@ aws sagemaker \
 
 클러스터 정책과 컴퓨팅 할당이 구성되면, HyperPod task governance의 다양한 측면을 보여주는 다음 예제들을 실행할 수 있습니다:
 
+`ml.g5.8xlarge`의 경우 아래 폴더로 이동합니다.
+```bash
+cd g5.8xlarge
+```
+
+`ml.g5.12xlarge`의 경우 아래 폴더로 이동합니다.
+```bash
+cd g5.12xlarge
+```
+
 ### Job 1: 유휴 컴퓨팅 사용
 
-**시나리오:** Team A가 **3개의 GPU**가 필요한 PyTorch 작업을 제출했지만 **2개만 할당**받았습니다. 시스템은 Team A가 Team B의 유휴 용량에서 1개의 GPU를 **차용**할 수 있도록 허용합니다.
-
-yaml 매니페스트에서 GPU를 3장 사용하고 있습니다. 그런데 Team A는 2장의 GPU만 할당되어 있습니다. 이럴 때 Team B에서 GPU를 당장 사용하지 않는다면 GPU 1장을 빌려서 학습을 진행할 수 있습니다.
+**시나리오:** Team A가 **2장의 GPU**가 필요한 PyTorch 작업을 제출했지만 **1장의 GPU만 할당**되어 있어서 GPU가 부족합니다. 
+다행히 Task Governance의 Policy에서 Team A가 Team B의 유휴 용량에서 1장의 GPU를 빌릴 수 있도록 허용되어 있기에, Team B에서 GPU를 당장 사용하지 않는다면 Team B의 GPU 1장을 빌려서 학습을 진행할 수 있습니다.
 
 ```bash
 kubectl apply -f 1-imagenet-gpu-team-a.yaml --namespace hyperpod-ns-team-a
 ```
 
-작업이 실행 중인지 확인해보세요 (컨테이너 이미지를 가져오는 데 시간이 걸릴 수 있습니다):
+훈련 작업이 실행 중인지 확인해보세요 (컨테이너 이미지를 가져오는 데 시간이 걸릴 수 있습니다):
 ```bash
 kubectl get pods -n hyperpod-ns-team-a
+```
+
+컨테이너 이미지를 가져온 이후 아래와 같은 메세지가 출력되어야 합니다.
+```bash
+NAME                             READY   STATUS    RESTARTS   AGE
+etcd-gpu-548f58597c-kqr6k        1/1     Running   0          4s
+imagenet-gpu-team-a-1-worker-0   1/1     Running   0          4s
+imagenet-gpu-team-a-1-worker-1   1/1     Running   0          4s
 ```
 
 파드가 실행되면 로그 출력을 확인하여 선출된 마스터를 식별할 수 있습니다:
@@ -206,39 +281,35 @@ kubectl logs imagenet-gpu-team-a-1-worker-0 --namespace hyperpod-ns-team-a | gre
 ```bash
 kubectl logs imagenet-gpu-team-a-1-worker-0 --namespace hyperpod-ns-team-a
 ```
-분명 Team A는 2장의 GPU만 할당되었는데 학습이 잘 되고 있습니다:
+분명 Team A는 할당된 GPU 리소스가 부족한데 학습이 잘 되고 있습니다:
 ```
-Epoch: [0][ 390/1042]   Time  0.059 ( 0.068)    Data  0.041 ( 0.047)    Loss 5.2586e+00 (5.1781e+00)    Acc@1   9.38 (  2.49)   Acc@5  21.88 (  9.80)
-Epoch: [0][ 400/1042]   Time  0.063 ( 0.068)    Data  0.046 ( 0.047)    Loss 5.3490e+00 (5.1744e+00)    Acc@1   0.00 (  2.48)   Acc@5   6.25 (  9.85)
+...
 Epoch: [0][ 400/1042]   Time  0.063 ( 0.068)    Data  0.041 ( 0.047)    Loss 5.1143e+00 (5.1643e+00)    Acc@1   3.12 (  2.51)   Acc@5  15.62 (  9.67)
 Epoch: [0][ 400/1042]   Time  0.058 ( 0.068)    Data  0.041 ( 0.046)    Loss 4.9779e+00 (5.1654e+00)    Acc@1   0.00 (  2.71)   Acc@5   9.38 (  9.91)
 Epoch: [0][ 410/1042]   Time  0.059 ( 0.068)    Data  0.041 ( 0.047)    Loss 4.6128e+00 (5.1670e+00)    Acc@1   0.00 (  2.54)   Acc@5   9.38 (  9.97)
 Epoch: [0][ 410/1042]   Time  0.059 ( 0.068)    Data  0.041 ( 0.047)    Loss 4.8785e+00 (5.1590e+00)    Acc@1   3.12 (  2.54)   Acc@5  18.75 (  9.80)
 Epoch: [0][ 410/1042]   Time  0.069 ( 0.068)    Data  0.051 ( 0.046)    Loss 5.3047e+00 (5.1587e+00)    Acc@1   0.00 (  2.74)   Acc@5   6.25 (  9.97)
+...
 ```
-
 
 ### Job 2: 우선순위에 의한 선점
 
-**Scenario:** Team B submits a **high-priority job** requiring **2 instances**. Since high-priority jobs take precedence, **Job 2 is suspended**, ensuring Team B’s critical workload runs first.
+그런데 Team B가 Team B에 할당된 모든 GPU를 필요로 하는 **높은 우선순위 훈련 작업**을 제출합니다.  높은 우선순위 작업이 우선권을 가지므로, Team A의 훈련 작업이 일시 중단되고 Team B의 중요한 워크로드가 먼저 실행됩니다.
 
 
 ```bash
-kubectl apply -f 3-imagenet-gpu-team-b-higher-prio.yaml --namespace hyperpod-ns-team-b
+kubectl apply -f 2-imagenet-gpu-team-b-higher-prio.yaml --namespace hyperpod-ns-team-b
 ```
-
-이 작업은 다른 작업보다 높은 가중치를 가진 **priority-class**를 사용하므로 낮은 우선순위의 Job 1이 선점됩니다:
 
 ```bash
 kubectl get pods -n hyperpod-ns-team-b
 ```
 
-
 `Tasks` 탭을 클릭하면 `imagenet-gpu-team-a-1` 작업이 중단되고 (Suspended), `imagenet-gpu-team-b-2` 작업이 진행 중 (Running) 임을 알 수 있습니다.
 
 ![task-governance-team-a-suspended](./imgs/task-governance-team-a-suspended.png)
 
-AWS CLI로 로그를 확인해 보면 더 이상 Team A의 training PoD가 존재하지 않음을 알 수 있습니다.
+AWS CLI로 로그를 확인해 보면 더 이상 Team A의 training Pod가 존재하지 않음을 알 수 있습니다.
 ```bash
 kubectl logs imagenet-gpu-team-a-1-worker-0 --namespace hyperpod-ns-team-a
 ```
@@ -259,6 +330,15 @@ Test: [ 50/313] Time  0.052 ( 0.052)    Loss 1.0167e+01 (1.0153e+01)    Acc@1   
 ...
 ```
 
+Team A의 중단된 학습을 재개하는 시나리오 재현을 위해 Team B의 학습을 강제로 중단해 봅시다.
+```bash
+kubectl delete -f 2-imagenet-gpu-team-b-higher-prio.yaml
+```
+
+이제 Team A가 다시 학습을 진행할 수 있으며, 콘솔 창에서 Team A의 학습 task가 **Running** 인 것을 확인할 수 있습니다. 다만 본 코드에서는 체크포인트 복구 로직을 구현하지 않았기에, 다시 처음부터 훈련을 진행하게 됩니다.
+
+
+## Trouble
 ## 모범 사례
 
 ### 컴퓨팅 할당 관리
