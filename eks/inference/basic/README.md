@@ -2,7 +2,7 @@
 
 ## 🚀 빠른 시작 (자동화 스크립트)
 
-### 1. 클러스터 접근 설정
+### 1. 클러스터 접근 설정 (../../setup/1.create-config.sh 실행 후 생성되는 env_var의 환경 변수를 로드합니다.)
 ```bash
 ./1.grant_eks_access.sh
 ```
@@ -14,8 +14,11 @@
 # FSx 환경 준비
 ./2.prepare_fsx_inference.sh
 
+# FSx로 모델 복사
+kubectl apply -f copy_to_fsx_lustre.yaml
+
 # 추론 엔드포인트 배포
-kubectl apply -f template/deploy_fsx_lustre_inference_operator_template.yaml
+kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 ```
 
 #### S3 기반 배포
@@ -26,7 +29,7 @@ kubectl apply -f template/deploy_fsx_lustre_inference_operator_template.yaml
 ./5.prepare_s3_inference.sh
 
 # 추론 엔드포인트 배포
-kubectl apply -f template/deploy_S3_inference_operator_template.yaml
+kubectl apply -f deploy_S3_inference_operator.yaml
 ```
 
 #### FSx + S3 혼합 배포 (둘 다)
@@ -37,10 +40,12 @@ kubectl apply -f template/deploy_S3_inference_operator_template.yaml
 ./4.fix_s3_csi_credentials.sh
 ./5.prepare_s3_inference.sh
 
+# FSx로 모델 복사
+kubectl apply -f copy_to_fsx_lustre.yaml
 # 원하는 배포 방식 선택
-kubectl apply -f template/deploy_fsx_lustre_inference_operator_template.yaml
+kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 # 또는
-kubectl apply -f template/deploy_S3_inference_operator_template.yaml
+kubectl apply -f deploy_S3_inference_operator.yaml
 ```
 
 ## 📊 테스트
