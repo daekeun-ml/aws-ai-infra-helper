@@ -5,6 +5,16 @@ PROFILE=${1:-default}
 
 echo "🚀 Starting FSX Inference Deployment..."
 
+# Auto-detect FSX filesystem ID if not set
+if [ -z "$FSX_FILESYSTEM_ID" ]; then
+    echo "🔍 Auto-detecting FSX filesystem ID..."
+    FSX_FILESYSTEM_ID=$(kubectl get pv fsx-pv -o jsonpath='{.spec.csi.volumeHandle}' 2>/dev/null)
+    if [ -n "$FSX_FILESYSTEM_ID" ]; then
+        echo "✅ Auto-detected FSX ID: $FSX_FILESYSTEM_ID"
+        export FSX_FILESYSTEM_ID
+    fi
+fi
+
 # Step 1: Update environment variables for FSX copy job
 echo "📝 Step 1: Setting up FSX copy job..."
 
@@ -40,14 +50,18 @@ echo "📝 Step 2: Setting up inference deployment..."
 echo "🔍 Auto-detecting instance type from EKS cluster..."
 INSTANCE_TYPE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null)
 
-# Auto-detect FSX filesystem ID from PV
+# Auto-detect FSX filesystem ID from environment variable (already set at script start)
 echo "🔍 Auto-detecting FSX filesystem ID from PV..."
-FSX_FILESYSTEM=$(kubectl get pv fsx-pv -o yaml 2>/dev/null | grep -A5 "csi:" | grep "volumeHandle:" | awk '{print $2}')
+FSX_FILESYSTEM="$FSX_FILESYSTEM_ID"
+
+if [ -n "$FSX_FILESYSTEM" ]; then
+    echo "✅ FSX Filesystem ID: $FSX_FILESYSTEM"
+fi
 
 # Check if we got the instance type
 if [ -z "$INSTANCE_TYPE" ]; then
     echo "⚠️  Warning: Could not auto-detect instance type from EKS cluster"
-    INSTANCE_TYPE="ml.g5.2xlarge"
+    INSTANCE_TYPE="ml.g5.8xlarge"
     echo "Using default instance type: $INSTANCE_TYPE"
 fi
 
@@ -55,6 +69,7 @@ fi
 if [ -z "$FSX_FILESYSTEM" ]; then
     echo "❌ Error: Could not auto-detect FSX filesystem ID from PV 'fsx-pv'"
     echo "Please check if PV 'fsx-pv' exists: kubectl get pv fsx-pv"
+    echo "Or set the FSX_FILESYSTEM_ID environment variable and run again."
     exit 1
 fi
 
