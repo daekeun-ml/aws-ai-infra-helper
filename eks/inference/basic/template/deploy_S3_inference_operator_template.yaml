@@ -11,7 +11,7 @@ spec:
   modelSourceConfig:
     modelSourceType: s3
     s3Storage:
-      bucketName: <YOUR_S3_BUCKET>  # Your S3 bucket name
+      bucketName: <YOUR_S3_BUCKET_NAME>  # Your S3 bucket name
       region: <YOUR_REGION> # Your region
     modelLocation: deepseek15b
     prefetchEnabled: true

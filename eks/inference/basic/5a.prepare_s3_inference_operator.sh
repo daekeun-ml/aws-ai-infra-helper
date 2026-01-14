@@ -12,23 +12,23 @@ INSTANCE_TYPE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.node\.
 # Check if we got the instance type
 if [ -z "$INSTANCE_TYPE" ]; then
     echo "⚠️  Warning: Could not auto-detect instance type from EKS cluster"
-    INSTANCE_TYPE="ml.g5.24xlarge"
+    INSTANCE_TYPE="ml.g5.8xlarge"
     echo "Using default instance type: $INSTANCE_TYPE"
 fi
 
-# Check if S3_BUCKET environment variable is set
-if [ -z "$S3_BUCKET" ]; then
-    echo "❌ S3_BUCKET environment variable is not set!"
+# Check if S3_BUCKET_NAME environment variable is set
+if [ -z "$S3_BUCKET_NAME" ]; then
+    echo "❌ S3_BUCKET_NAME environment variable is not set!"
     echo "Please run 3.copy_to_s3.sh first to create and populate S3 bucket"
-    echo "Or set S3_BUCKET manually: export S3_BUCKET=your-bucket-name"
+    echo "Or set S3_BUCKET_NAME manually: export S3_BUCKET_NAME=your-bucket-name"
     exit 1
 fi
 
-echo "🔍 Using S3 bucket: $S3_BUCKET"
+echo "🔍 Using S3 bucket: $S3_BUCKET_NAME"
 
 # Verify bucket exists and has model
-if ! aws s3 ls "s3://$S3_BUCKET/deepseek15b/" --profile $PROFILE >/dev/null 2>&1; then
-    echo "❌ Model not found in S3 bucket: s3://$S3_BUCKET/deepseek15b/"
+if ! aws s3 ls "s3://$S3_BUCKET_NAME/deepseek15b/" --profile $PROFILE >/dev/null 2>&1; then
+    echo "❌ Model not found in S3 bucket: s3://$S3_BUCKET_NAME/deepseek15b/"
     echo "Please run 3.copy_to_s3.sh first to copy the model"
     exit 1
 fi
@@ -44,18 +44,18 @@ cp template/deploy_S3_inference_operator_template.yaml deploy_S3_inference_opera
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     sed -i '' "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_S3_inference_operator.yaml
-    sed -i '' "s|<YOUR_S3_BUCKET>|$S3_BUCKET|g" deploy_S3_inference_operator.yaml
+    sed -i '' "s|<YOUR_S3_BUCKET_NAME>|$S3_BUCKET_NAME|g" deploy_S3_inference_operator.yaml
     sed -i '' "s|<YOUR_REGION>|$AWS_REGION|g" deploy_S3_inference_operator.yaml
 else
     # Linux
     sed -i "s|<YOUR_INSTANCE_TYPE>|$INSTANCE_TYPE|g" deploy_S3_inference_operator.yaml
-    sed -i "s|<YOUR_S3_BUCKET>|$S3_BUCKET|g" deploy_S3_inference_operator.yaml
+    sed -i "s|<YOUR_S3_BUCKET_NAME>|$S3_BUCKET_NAME|g" deploy_S3_inference_operator.yaml
     sed -i "s|<YOUR_REGION>|$AWS_REGION|g" deploy_S3_inference_operator.yaml
 fi
 
 echo "✅ Deployment file created successfully!"
 echo "📍 Instance Type: $INSTANCE_TYPE"
-echo "📍 S3 Bucket: $S3_BUCKET"
+echo "📍 S3 Bucket: $S3_BUCKET_NAME"
 echo "📍 Region: $AWS_REGION"
 echo "📍 Output file: deploy_S3_inference_operator.yaml"
 echo ""

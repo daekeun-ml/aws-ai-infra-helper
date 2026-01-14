@@ -9,7 +9,7 @@
 
 ### 2. 배포 방법 선택
 
-#### FSx 기반 배포
+#### FSx 기반 배포 (AWS 계정)
 ```bash
 # FSx 환경 준비
 ./2.prepare_fsx_inference.sh
@@ -21,35 +21,30 @@ kubectl apply -f copy_to_fsx_lustre.yaml
 kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 ```
 
-#### S3 기반 배포
+#### S3 기반 배포 (AWS 계정)
 ```bash
 # S3 환경 준비
 ./3.copy_to_s3.sh
 ./4.fix_s3_csi_credentials.sh
-./5.prepare_s3_inference.sh
+./5a.prepare_s3_inference.sh
 
 # 추론 엔드포인트 배포
 kubectl apply -f deploy_S3_inference_operator.yaml
 ```
 
-#### FSx + S3 혼합 배포 (둘 다)
+#### S3 기반 배포 (AWS 워크샵 임시 계정)
 ```bash
-# 모든 환경 준비
-./2.prepare_fsx_inference.sh
+# S3 환경 준비
 ./3.copy_to_s3.sh
-./4.fix_s3_csi_credentials.sh
-./5.prepare_s3_inference.sh
+./5b.prepare_s3_direct_deploy.sh
 
-# FSx로 모델 복사
-kubectl apply -f copy_to_fsx_lustre.yaml
-# 원하는 배포 방식 선택
-kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
-# 또는
-kubectl apply -f deploy_S3_inference_operator.yaml
+# 추론 엔드포인트 배포
+kubectl apply -f deploy_S3_direct.yaml
 ```
 
-## 📊 테스트
+## 📊 테스트 
 
+### AWS 계정
 배포 완료 후 추론 엔드포인트를 테스트할 수 있습니다:
 
 ```bash
@@ -60,6 +55,25 @@ python invoke.py
 > **참고**: `invoke.py` 파일에서 `ENDPOINT_NAME`을 배포한 엔드포인트 이름으로 수정하세요.
 > - FSx 배포: `'deepseek15b-fsx'`
 > - S3 배포: `'deepseek15b'` (또는 사용자 정의 이름)
+
+### AWS 워크샵 임시 계정
+
+```bash
+# Pod 상태 확인
+kubectl get pods -w
+
+# 로그 확인 (모델 로딩 진행 상황)
+kubectl logs -l app=deepseek15b -f
+
+# Service 확인
+kubectl get svc deepseek15b
+
+# 간단한 테스트
+kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \
+  curl -X POST http://deepseek15b:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
+```
 
 ---
 

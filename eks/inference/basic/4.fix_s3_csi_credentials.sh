@@ -59,21 +59,19 @@ fi
 # Auto-detect region from AWS CLI config or kubectl context
 REGION=$(aws configure get region 2>/dev/null || kubectl config current-context | grep -o 'us-[a-z]*-[0-9]' || echo "us-east-2")
 
-# Check S3_BUCKET environment variable
-if [ -z "$S3_BUCKET" ]; then
-    echo "❌ S3_BUCKET environment variable is not set!"
-    echo "Please run 3.copy_to_s3.sh first to set S3_BUCKET"
-    echo "Or set it manually: export S3_BUCKET=your-bucket-name"
+# Check _NAME environment variable
+if [ -z "$S3_BUCKET_NAME" ]; then
+    echo "❌ S3_BUCKET_NAME environment variable is not set!"
+    echo "Please run 3.copy_to_s3.sh first to set S3_BUCKET_NAME"
+    echo "Or set it manually: export S3_BUCKET_NAME=your-bucket-name"
     exit 1
 fi
-
-BUCKET_NAME="$S3_BUCKET"
 
 ROLE_NAME="AmazonEKS_S3_CSI_DriverRole"
 POLICY_NAME="AmazonS3CSIDriverPolicy"
 
 echo "📍 Region: $REGION"
-echo "🪣 Bucket: $BUCKET_NAME"
+echo "🪣 Bucket: $S3_BUCKET_NAME"
 
 # 1. Get AWS Account ID
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -98,8 +96,8 @@ else
                 "s3:DeleteObject"
             ],
             "Resource": [
-                "arn:aws:s3:::${BUCKET_NAME}",
-                "arn:aws:s3:::${BUCKET_NAME}/*"
+                "arn:aws:s3:::${S3_BUCKET_NAME}",
+                "arn:aws:s3:::${S3_BUCKET_NAME}/*"
             ]
         }
     ]

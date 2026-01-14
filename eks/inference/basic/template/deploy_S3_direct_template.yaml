@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: deepseek15b-s3-pv
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteMany
+  mountOptions:
+    - allow-delete
+    - region <YOUR_REGION> # Your AWS REGION
+  csi:
+    driver: s3.csi.aws.com
+    volumeHandle: <YOUR_S3_BUCKET_NAME>  # Your S3 bucket name
+    volumeAttributes:
+      bucketName: <YOUR_S3_BUCKET_NAME>  # Your S3 bucket name
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepseek15b-model-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  resources:
+    requests:
+      storage: 50Gi
+  volumeName: deepseek15b-s3-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek15b
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepseek15b
+  template:
+    metadata:
+      labels:
+        app: deepseek15b
+    spec:
+      containers:
+      - name: inference
+        image: 763104351884.dkr.ecr.us-east-2.amazonaws.com/djl-inference:0.32.0-lmi14.0.0-cu124
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: OPTION_ROLLING_BATCH
+          value: "vllm"
+        - name: SERVING_CHUNKED_READ_TIMEOUT
+          value: "480"
+        - name: DJL_OFFLINE
+          value: "true"
+        - name: NUM_SHARD
+          value: "1"
+        - name: SAGEMAKER_PROGRAM
+          value: "inference.py"
+        - name: SAGEMAKER_SUBMIT_DIRECTORY
+          value: "/opt/ml/model/code"
+        - name: MODEL_CACHE_ROOT
+          value: "/opt/ml/model"
+        - name: SAGEMAKER_MODEL_SERVER_WORKERS
+          value: "1"
+        - name: SAGEMAKER_MODEL_SERVER_TIMEOUT
+          value: "3600"
+        - name: OPTION_TRUST_REMOTE_CODE
+          value: "true"
+        - name: OPTION_ENABLE_REASONING
+          value: "true"
+        - name: OPTION_REASONING_PARSER
+          value: "deepseek_r1"
+        - name: SAGEMAKER_CONTAINER_LOG_LEVEL
+          value: "20"
+        - name: SAGEMAKER_ENV
+          value: "1"
+        - name: HF_HOME
+          value: "/opt/ml/model"
+        - name: AWS_REGION
+          value: <YOUR_REGION> # Your AWS REGION
+        resources:
+          requests:
+            nvidia.com/gpu: 1
+            cpu: "25"
+            memory: 102Gi
+          limits:
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: model-storage
+          mountPath: /opt/ml/model
+          subPath: deepseek15b
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: deepseek15b-model-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deepseek15b
+spec:
+  selector:
+    app: deepseek15b
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
