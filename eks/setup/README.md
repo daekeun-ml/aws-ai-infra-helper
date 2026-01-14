@@ -13,12 +13,14 @@ HyperPod EKS 클러스터 생성 후 필요한 추가 설정을 위한 스크립
 ### 1. 환경 설정 생성
 
 ```bash
+# 일반 AWS 계졍
 ./1.create-config.sh
+
+# 핸즈온 워크샵용 (Workshop Studio)
+./1.create-config-workshop.sh
 ```
 
-- AWS Region 자동 감지
-- SageMaker HyperPod 클러스터와 EKS 클러스터 자동 매칭
-- CloudFormation 스택에서 필요한 리소스 정보 추출
+- SageMaker HyperPod 리소스 정보 추출
 - 환경 변수를 `env_vars` 파일에 저장
 
 ### 2. EKS 클러스터 접근 권한 설정
@@ -73,7 +75,8 @@ source ./env_vars
 
 ## 문제 해결
 
+- 환경 변수 미인식: `1.create-config-workshop.sh` 실행
 - 권한 오류 발생 시: IAM 역할에 EKS 관리 권한이 있는지 확인
 - 클러스터 연결 실패 시: kubeconfig가 올바르게 설정되었는지 확인
-- 여러 클러스터가 있는 경우: 스크립트가 자동으로 선택 옵션을 제공합니다
-- kubectl/helm이 없는 경우: 스크립트가 자동으로 설치합니다
+- 여러 클러스터가 있는 경우: 스크립트가 자동으로 선택 옵션을 제공합니다.
+- kubectl/helm이 없는 경우: 스크립트가 자동으로 설치합니다.
