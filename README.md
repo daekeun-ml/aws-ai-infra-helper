@@ -4,8 +4,11 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 
 ## 🚀 What's New
 ### v1.0.7
-- **HyperPod EKS Task Goverance 핸즈온 추가**: 팀과 프로젝트 간의 리소스 할당을 간소화하고 컴퓨팅 리소스의 효율적인 활용을 보장하는 관리 환경 구성
+- **HyperPod EKS Task Governance 핸즈온 추가**: 팀과 프로젝트 간의 리소스 할당을 간소화하고 컴퓨팅 리소스의 효율적인 활용을 보장하는 관리 환경 구성
 - **HyperPod EKS Workshop Stduio (실습용 임시 계정) 실습을 위한 가이드 및 코드 추가**
+
+<details>
+<summary>클릭하여 전체 업데이트 내역 보기</summary>
 
 ### v1.0.6
 - **HyperPod EKS Inference 핸즈온 추가**: HyperPod Inference Operator를 활용한 Kubernetes 기반 AI/ML 모델 추론 환경 구성
@@ -31,6 +34,8 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 - **DeepSpeed 통합**: DeepSpeed ZeRO 기반 대규모 모델 학습 샘플 추가
 - **Qwen 3 0.6B 테스트**: 최신 Qwen 3 0.6B 모델 학습 및 추론 예제 (p4/p5 인스턴스 권장)
 - **성능 최적화**: 최신 GPU 인스턴스 타입에 최적화된 설정 및 가이드
+
+</details>
 
 ## 개요
 
