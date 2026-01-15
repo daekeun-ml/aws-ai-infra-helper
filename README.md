@@ -3,8 +3,12 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.7
+- **HyperPod EKS Task Goverance 핸즈온 추가**: 팀과 프로젝트 간의 리소스 할당을 간소화하고 컴퓨팅 리소스의 효율적인 활용을 보장하는 관리 환경 구성
+- **HyperPod EKS Workshop Stduio (실습용 임시 계정) 실습을 위한 가이드 및 코드 추가**
+
 ### v1.0.6
-- **HyperPod EKS Inference 솔루션 추가**: HyperPod Inference Operator를 활용한 Kubernetes 기반 AI/ML 모델 추론 환경 구성
+- **HyperPod EKS Inference 핸즈온 추가**: HyperPod Inference Operator를 활용한 Kubernetes 기반 AI/ML 모델 추론 환경 구성
   - **Basic 추론 환경**: FSx Lustre 및 S3 CSI 기반 모델 배포, 자동화 스크립트 제공
   - **KV Cache & Intelligent Routing**: Managed Tiered KV Cache와 Intelligent Routing을 활용한 고성능 추론 최적화
 
@@ -131,42 +135,50 @@ aws-ai-infra-helper/
 │
 └── eks/                  # EKS 관련 도구 및 가이드
     ├── setup/         # EKS 학습 클러스터 설정
-    │   ├── README.md             # EKS 학습 가이드
-    │   ├── 1.create-config.sh    # 환경 설정 생성
-    │   ├── 2.setup-eks-access.sh # EKS 접근 권한 설정
-    │   ├── 3.validate-cluster.sh # 클러스터 검증
-    │   └── check-nodegroup.sh    # NodeGroup 정보 확인
+    │   ├── README.md                     # EKS 학습 가이드
+    │   ├── 1.create-config.sh            # 환경 설정 생성
+    │   ├── 1.create-config-workshop.sh   # Workshop Studio용 환경 설정
+    │   ├── 2.setup-eks-access.sh         # EKS 접근 권한 설정
+    │   ├── 3.validate-cluster.sh         # 클러스터 검증
+    │   └── check-nodegroup.sh            # NodeGroup 정보 확인
     │
-    └── inference/        # HyperPod EKS 추론 솔루션
-        ├── README.md             # HyperPod EKS Inference 가이드
-        ├── install_tools.sh      # 필수 도구 설치 스크립트
-        ├── explore_fsx.sh        # FSx 탐색 도구
-        │
-        ├── basic/                # 기본 추론 환경
-        │   ├── README.md                 # 기본 추론 배포 가이드
-        │   ├── 1.grant_eks_access.sh     # EKS 접근 권한 설정
-        │   ├── 2.prepare_fsx_inference.sh # FSx 기반 추론 환경 준비
-        │   ├── 3.copy_to_s3.sh           # 모델을 S3에 복사
-        │   ├── 4.fix_s3_csi_credentials.sh # S3 CSI 자격증명 수정
-        │   ├── 5.prepare_s3_inference.sh  # S3 기반 추론 환경 준비
-        │   ├── 6.create_test_pod.sh       # 테스트 Pod 생성
-        │   ├── comprehensive_benchmark.py # 종합 성능 벤치마크
-        │   ├── invoke.py                  # 기본 추론 테스트
-        │   └── template/                  # Kubernetes 배포 템플릿
-        │       ├── deploy_S3_inference_operator_template.yaml
-        │       ├── deploy_fsx_lustre_inference_operator_template.yaml
-        │       └── copy_to_fsx_lustre_template.yaml
-        │
-        └── kvcache-and-intelligent-routing/ # 고급 추론 최적화
-            ├── README.md                 # KV Cache & Intelligent Routing 가이드
-            ├── 1.copy_to_s3.sh           # 모델을 S3에 복사
-            ├── 2.setup_s3_csi.sh         # S3 CSI 설정
-            ├── 3.prepare.sh              # 환경 준비
-            ├── 4.check_status.sh         # 상태 확인
-            ├── cleanup.sh                # 리소스 정리
-            ├── benchmark.py              # 고성능 벤치마크
-            ├── invoke.py                 # 추론 테스트
-            └── inference_endpoint_config.yaml # 추론 엔드포인트 설정
+    ├── inference/        # HyperPod EKS 추론 솔루션
+    │   ├── README.md             # HyperPod EKS Inference 가이드
+    │   ├── install_tools.sh      # 필수 도구 설치 스크립트
+    │   ├── explore_fsx.sh        # FSx 탐색 도구
+    │   │
+    │   ├── basic/                # 기본 추론 환경
+    │   │   ├── README.md                         # 기본 추론 배포 가이드
+    │   │   ├── 1.grant_eks_access.sh             # EKS 접근 권한 설정
+    │   │   ├── 2.prepare_fsx_inference.sh        # FSx 기반 추론 환경 준비
+    │   │   ├── 3.copy_to_s3.sh                   # 모델을 S3에 복사
+    │   │   ├── 4.fix_s3_csi_credentials.sh       # S3 CSI 자격증명 수정
+    │   │   ├── 5a.prepare_s3_inference_operator.sh # S3 Inference Operator 배포
+    │   │   ├── 5b.prepare_s3_direct_deploy.sh    # S3 Direct 배포
+    │   │   ├── 6a.create_test_pod.sh             # 테스트 Pod 생성
+    │   │   ├── invoke.py                         # 기본 추론 테스트
+    │   │   └── template/                         # Kubernetes 배포 템플릿
+    │   │       ├── deploy_S3_inference_operator_template.yaml
+    │   │       ├── deploy_S3_direct_template.yaml
+    │   │       ├── deploy_fsx_lustre_inference_operator_template.yaml
+    │   │       └── copy_to_fsx_lustre_template.yaml
+    │   │
+    │   └── kvcache-and-intelligent-routing/ # 고급 추론 최적화
+    │       ├── README.md                 # KV Cache & Intelligent Routing 가이드
+    │       ├── 1.copy_to_s3.sh           # 모델을 S3에 복사
+    │       ├── 2.setup_s3_csi.sh         # S3 CSI 설정
+    │       ├── 3.prepare.sh              # 환경 준비
+    │       ├── 4.check_status.sh         # 상태 확인
+    │       ├── cleanup.sh                # 리소스 정리
+    │       ├── benchmark.py              # 고성능 벤치마크
+    │       ├── invoke.py                 # 추론 테스트
+    │       └── inference_endpoint_config.yaml # 추론 엔드포인트 설정
+    │
+    └── task-governance/  # HyperPod EKS Task Governance
+        ├── README.md                     # Task Governance 가이드
+        ├── setup-task-governance.sh      # Task Governance 설정 스크립트
+        ├── g5.8xlarge/                   # g5.8xlarge 인스턴스용 설정
+        └── g5.12xlarge/                  # g5.12xlarge 인스턴스용 설정
 ```
 
 </details>

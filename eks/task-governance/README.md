@@ -80,7 +80,7 @@ HyperPod Task governance는 Kubernetes 네이티브 작업 큐잉, 스케줄링 
 
 #### 할당량 관리 원칙:
 - 전체 예약 할당량은 해당 리소스에 대한 클러스터의 사용 가능한 용량을 초과하지 않아야 합니다
-- 예: 클러스터가 20개의 ml.c5.2xlarge 인스턴스로 구성된 경우, 팀에 할당된 누적 할당량은 20개 미만이어야 합니다
+- 예: 클러스터가 20개의 `ml.c5.2xlarge` 인스턴스로 구성된 경우, 팀에 할당된 누적 할당량은 20개 미만이어야 합니다
 
 ## Task Governance 활성화
 
@@ -92,7 +92,7 @@ HyperPod Task governance는 Kubernetes 네이티브 작업 큐잉, 스케줄링 
 ### 설치 단계
 
 #### AWS 콘솔
-[SageMaker HyperPod 콘솔](https://us-west-2.console.aws.amazon.com/sagemaker/home#/cluster-management) 에서 클러스터를 선택하고 "Dasoboard" 탭에서 Amazon SageMaker HyperPod task governance 항목의 **Quick install** 버튼을 클릭하면 애드온을 활성화할 수 있습니다.
+[SageMaker HyperPod 콘솔](https://us-west-2.console.aws.amazon.com/sagemaker/home#/cluster-management) 에서 클러스터를 선택하고 "Dasoboard" 탭에서 Amazon SageMaker HyperPod task governance 항목의 **Install** 버튼을 클릭하여 애드온을 활성화합니다.
 
 ![task-governance-install](./imgs/task-governance-install.png)
 
@@ -260,6 +260,14 @@ kubectl apply -f 1-imagenet-gpu-team-a.yaml --namespace hyperpod-ns-team-a
 kubectl get pods -n hyperpod-ns-team-a
 ```
 
+특정 파드의 상세 정보(이벤트 포함)를 확인하려면 아래 명령어를 입력해 보세요.
+```bash
+kubectl describe pod imagenet-gpu-team-a-1-worker-0 -n hyperpod-ns-team-a
+
+# 두 파드 모두 확인
+kubectl describe pod imagenet-gpu-team-a-1-worker-0 imagenet-gpu-team-a-1-worker-1 -n hyperpod-ns-team-a
+```
+
 컨테이너 이미지를 가져온 이후 아래와 같은 메세지가 출력되어야 합니다.
 ```bash
 NAME                             READY   STATUS    RESTARTS   AGE
@@ -337,8 +345,6 @@ kubectl delete -f 2-imagenet-gpu-team-b-higher-prio.yaml
 
 이제 Team A가 다시 학습을 진행할 수 있으며, 콘솔 창에서 Team A의 학습 task가 **Running** 인 것을 확인할 수 있습니다. 다만 본 코드에서는 체크포인트 복구 로직을 구현하지 않았기에, 다시 처음부터 훈련을 진행하게 됩니다.
 
-
-## Trouble
 ## 모범 사례
 
 ### 컴퓨팅 할당 관리
