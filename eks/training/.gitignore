@@ -1,0 +1,8 @@
+# Generated YAML files (contain credentials)
+copy_model_to_fsx.yaml
+prepare_sample_data.yaml
+pytorchjob_finetuning.yaml
+
+# Temporary files
+*.tmp
+*.log
