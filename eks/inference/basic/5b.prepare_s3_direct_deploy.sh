@@ -18,7 +18,7 @@ echo "📍 S3 Bucket: $S3_BUCKET_NAME"
 # 1. Check if model exists in S3
 echo ""
 echo "🔍 Checking model in S3 bucket..."
-if ! aws s3 ls "s3://$S3_BUCKET_NAMEdeepseek15b/" --region $AWS_REGION >/dev/null 2>&1; then
+if ! aws s3 ls "s3://$S3_BUCKET_NAME/deepseek15b/" --region $AWS_REGION >/dev/null 2>&1; then
     echo "❌ Model not found in S3. Please run 3.copy_to_s3.sh first."
     exit 1
 fi
@@ -85,8 +85,7 @@ echo "  3. Check logs: kubectl logs -l app=deepseek15b -f"
 echo "  4. Wait for 'Running' status (1/1 Ready)"
 echo ""
 echo "Test inference:"
-echo "  kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \\"
-echo "    curl -X POST http://deepseek15b:8080/invocations \\"
+echo "  kubectl exec -it deployment/deepseek15b -- curl -X POST http://localhost:8080/invocations \\"
 echo "    -H 'Content-Type: application/json' \\"
 echo "    -d '{\"inputs\": \"Explain machine learning in simple terms.\", \"parameters\": {\"max_new_tokens\": 200, \"temperature\": 0.7, \"repetition_penalty\": 1.5}}'"
 

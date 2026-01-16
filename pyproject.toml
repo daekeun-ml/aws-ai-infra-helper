@@ -1,6 +1,6 @@
 [project]
 name = "aws-ai-infra-helper"
-version = "1.0.7"
+version = "1.0.8"
 description = "AWS AI Infra helper for SageMaker HyperPod and ParallelCluster"
 readme = "README.md"
 requires-python = ">=3.10"

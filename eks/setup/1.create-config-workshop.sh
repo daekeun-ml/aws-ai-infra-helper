@@ -77,34 +77,24 @@ export SECURITY_GROUP_ID=$(aws eks describe-cluster --name ${EKS_CLUSTER_NAME} -
 echo "export SECURITY_GROUP_ID=${SECURITY_GROUP_ID}" >> env_vars
 echo "[INFO] SECURITY_GROUP_ID = ${SECURITY_GROUP_ID}"
 
-# Find S3 buckets starting with sagemaker-hyperpod-eks-bucket-
-S3_BUCKETS=$(aws s3 ls | grep "sagemaker-hyperpod-eks-bucket-" | awk '{print $3}')
+# Find S3 buckets with 'sagemaker' in the name
+S3_BUCKETS=$(aws s3 ls | grep "sagemaker" | awk '{print $3}')
 
 if [[ -z "${S3_BUCKETS}" ]]; then
-    echo "[WARNING] No S3 buckets found starting with 'sagemaker-hyperpod-eks-bucket-'"
+    echo "[WARNING] No S3 buckets found with 'sagemaker' in the name"
 else
-    BUCKET_COUNT=$(echo "${S3_BUCKETS}" | wc -l)
-    if [ ${BUCKET_COUNT} -eq 1 ]; then
-        export S3_BUCKET_NAME="${S3_BUCKETS}"
-        echo "[INFO] Auto-selected S3_BUCKET_NAME = ${S3_BUCKET_NAME}"
-    else
-        echo "[INFO] Multiple S3 buckets found. Select one (press Enter for default):"
-        PS3="Select bucket number: "
-        select bucket in ${S3_BUCKETS}; do
-            if [[ -n "$bucket" ]]; then
-                export S3_BUCKET_NAME="$bucket"
-                echo "[INFO] Selected S3_BUCKET_NAME = ${S3_BUCKET_NAME}"
-                break
-            elif [[ -z "$REPLY" ]]; then
-                export S3_BUCKET_NAME=$(echo "${S3_BUCKETS}" | head -1)
-                echo "[INFO] Using default S3_BUCKET_NAME = ${S3_BUCKET_NAME}"
-                break
-            else
-                echo "Invalid selection. Try again or press Enter for default."
-            fi
-        done
-    fi
-    echo "export S3_BUCKET_NAME=${S3_BUCKET_NAME}" >> env_vars
+    echo "[INFO] Available SageMaker S3 buckets. Please select one:"
+    PS3="Select bucket number: "
+    select bucket in ${S3_BUCKETS}; do
+        if [[ -n "$bucket" ]]; then
+            export S3_BUCKET_NAME="$bucket"
+            echo "[INFO] Selected S3_BUCKET_NAME = ${S3_BUCKET_NAME}"
+            echo "export S3_BUCKET_NAME=${S3_BUCKET_NAME}" >> env_vars
+            break
+        else
+            echo "Invalid selection. Please try again."
+        fi
+    done
 fi
 
 # Find SageMaker execution role

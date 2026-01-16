@@ -42,19 +42,35 @@ kubectl apply -f deploy_S3_inference_operator.yaml
 kubectl apply -f deploy_S3_direct.yaml
 ```
 
-## 📊 테스트 
+### ⚠️ 리소스 부족 문제 해결
 
-### AWS 계정
-배포 완료 후 추론 엔드포인트를 테스트할 수 있습니다:
+`ml.g5.2xlarge` 등 작은 인스턴스를 사용하거나 노드에 Pod가 많아서 배포가 실패하는 경우:
 
 ```bash
-# 기본 추론 테스트 (invoke.py에서 ENDPOINT_NAME 수정 필요)
-python invoke.py
+kubectl get pods -w
+
+# NAME                          READY   STATUS    RESTARTS   AGE
+# deepseek15b-59586756d-h7vsx   0/1     Pending   0          30s
 ```
 
-> **참고**: `invoke.py` 파일에서 `ENDPOINT_NAME`을 배포한 엔드포인트 이름으로 수정하세요.
-> - FSx 배포: `'deepseek15b-fsx'`
-> - S3 배포: `'deepseek15b'` (또는 사용자 정의 이름)
+```bash
+# 문제 해결 스크립트 실행
+./fix_deployment_issues.sh
+
+# 기존 배포 삭제 후 재배포
+kubectl delete deployment deepseek15b
+kubectl apply -f deploy_S3_direct.yaml
+```
+
+이 스크립트는:
+- Kueue/KEDA 등 불필요한 시스템 Pod 정리
+- 완료된 Job Pod 삭제
+- PVC 바인딩 문제 해결
+- Webhook 설정 제거
+
+실행 후 다시 배포하세요.
+
+## 📊 테스트 
 
 ### AWS 워크샵 임시 계정
 
@@ -69,11 +85,28 @@ kubectl logs -l app=deepseek15b -f
 kubectl get svc deepseek15b
 
 # 간단한 테스트
+kubectl exec -it deployment/deepseek15b -- curl -X POST http://localhost:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
+
+# 테스트 (테스트용 Pod 띄우고 실행)
 kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \
   curl -X POST http://deepseek15b:8080/invocations \
   -H 'Content-Type: application/json' \
   -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
 ```
+
+### AWS 계정
+배포 완료 후 추론 엔드포인트를 테스트할 수 있습니다:
+
+```bash
+# 기본 추론 테스트 (invoke.py에서 ENDPOINT_NAME 수정 필요)
+python invoke.py
+```
+
+> **참고**: `invoke.py` 파일에서 `ENDPOINT_NAME`을 배포한 엔드포인트 이름으로 수정하세요.
+> - FSx 배포: `'deepseek15b-fsx'`
+> - S3 배포: `'deepseek15b'` (또는 사용자 정의 이름)
 
 ---
 
