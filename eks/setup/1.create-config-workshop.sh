@@ -29,22 +29,16 @@ if [ -z "${HYPERPOD_CLUSTER_NAME}" ]; then
     
     if [[ ! -z "${CLUSTERS}" && "${CLUSTERS}" != "None" ]]; then
         echo "[INFO] Found HyperPod clusters: ${CLUSTERS}"
-        CLUSTER_COUNT=$(echo ${CLUSTERS} | wc -w)
-        if [ ${CLUSTER_COUNT} -eq 1 ]; then
-            export HYPERPOD_CLUSTER_NAME="${CLUSTERS}"
-            echo "[INFO] Auto-selected HYPERPOD_CLUSTER_NAME = ${HYPERPOD_CLUSTER_NAME}"
-        else
-            echo "[INFO] Multiple clusters found, please select:"
-            select cluster in ${CLUSTERS}; do
-                if [[ -n "$cluster" ]]; then
-                    export HYPERPOD_CLUSTER_NAME="$cluster"
-                    echo "[INFO] Selected HYPERPOD_CLUSTER_NAME = ${HYPERPOD_CLUSTER_NAME}"
-                    break
-                else
-                    echo "Invalid selection. Please try again."
-                fi
-            done
-        fi
+        echo "[INFO] Please select a HyperPod cluster:"
+        select cluster in ${CLUSTERS}; do
+            if [[ -n "$cluster" ]]; then
+                export HYPERPOD_CLUSTER_NAME="$cluster"
+                echo "[INFO] Selected HYPERPOD_CLUSTER_NAME = ${HYPERPOD_CLUSTER_NAME}"
+                break
+            else
+                echo "Invalid selection. Please try again."
+            fi
+        done
     else
         echo "[ERROR] No HyperPod clusters found"
         exit 1
@@ -52,31 +46,14 @@ if [ -z "${HYPERPOD_CLUSTER_NAME}" ]; then
 fi
 echo "export HYPERPOD_CLUSTER_NAME=${HYPERPOD_CLUSTER_NAME}" >> env_vars
 
-# Get all EKS clusters
-EKS_CLUSTERS=$(aws eks list-clusters --region ${AWS_REGION} --query 'clusters' --output text 2>/dev/null)
+# Get EKS cluster name from HyperPod cluster
+export EKS_CLUSTER_NAME=$(aws sagemaker describe-cluster --cluster-name ${HYPERPOD_CLUSTER_NAME} --region ${AWS_REGION} --query 'Orchestrator.Eks.ClusterArn' --output text 2>/dev/null | cut -d'/' -f2)
 
-if [[ -z "${EKS_CLUSTERS}" || "${EKS_CLUSTERS}" == "None" ]]; then
-    echo "[ERROR] No EKS clusters found in region ${AWS_REGION}"
+if [[ -z "${EKS_CLUSTER_NAME}" || "${EKS_CLUSTER_NAME}" == "None" ]]; then
+    echo "[ERROR] Could not find EKS cluster for HyperPod cluster ${HYPERPOD_CLUSTER_NAME}"
     exit 1
 fi
 
-# Try to auto-match first
-export EKS_CLUSTER_NAME=$(echo ${EKS_CLUSTERS} | tr '\t' '\n' | grep -i "${HYPERPOD_CLUSTER_NAME}" | head -1)
-
-if [[ -z "${EKS_CLUSTER_NAME}" ]]; then
-    echo "[INFO] Could not auto-match EKS cluster. Available EKS clusters:"
-    select cluster in ${EKS_CLUSTERS}; do
-        if [[ -n "$cluster" ]]; then
-            export EKS_CLUSTER_NAME="$cluster"
-            echo "[INFO] Selected EKS_CLUSTER_NAME = ${EKS_CLUSTER_NAME}"
-            break
-        else
-            echo "Invalid selection. Please try again."
-        fi
-    done
-else
-    echo "[INFO] Auto-matched EKS cluster"
-fi
 echo "export EKS_CLUSTER_NAME=${EKS_CLUSTER_NAME}" >> env_vars
 echo "[INFO] EKS_CLUSTER_NAME = ${EKS_CLUSTER_NAME}"
 
