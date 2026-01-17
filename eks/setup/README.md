@@ -67,15 +67,11 @@ source ./env_vars
 
 ## 유틸리티 스크립트
 
-### NodeGroup 정보 확인
+### 가용 Pod 정보 확인
 
 ```bash
-./check-nodegroup.sh
+./check-node-availability.sh
 ```
-
-- EKS 클러스터 및 NodeGroup 정보 조회
-- 인스턴스 타입, 스케일링 설정 확인
-- 노드별 Pod 수 확인
 
 ## 환경 변수
 
