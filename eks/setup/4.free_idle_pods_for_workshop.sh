@@ -8,11 +8,13 @@ kubectl delete mutatingwebhookconfiguration kueue-mutating-webhook-configuration
 kubectl delete validatingwebhookconfiguration kueue-validating-webhook-configuration 2>/dev/null || true
 
 # Scale down unnecessary deployments to free up pod slots
-echo "📝 Scaling down Kueue and KEDA..."
+echo "📝 Scaling down Kueue..."
 kubectl scale deployment -n kueue-system kueue-controller-manager --replicas=0 2>/dev/null || true
-kubectl scale deployment -n kube-system keda-operator --replicas=0 2>/dev/null || true
-kubectl scale deployment -n kube-system keda-admission-webhooks --replicas=0 2>/dev/null || true
-kubectl scale deployment -n kube-system keda-operator-metrics-apiserver --replicas=0 2>/dev/null || true
+
+echo "📝 Deleting KEDA components (not needed for workshop)..."
+kubectl delete deployment -n kube-system keda-operator 2>/dev/null || true
+kubectl delete deployment -n kube-system keda-admission-webhooks 2>/dev/null || true
+kubectl delete deployment -n kube-system keda-operator-metrics-apiserver 2>/dev/null || true
 
 echo "📝 Scaling down inference operator..."
 kubectl scale deployment -n hyperpod-inference-system hyperpod-inference-operator-controller-manager --replicas=0 2>/dev/null || true

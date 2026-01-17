@@ -65,10 +65,17 @@ echo "[INFO] EKS_CLUSTER_NAME = ${EKS_CLUSTER_NAME}"
 
 # Find CloudFormation stack using EKS cluster name prefix
 STACK_PREFIX=$(echo ${EKS_CLUSTER_NAME} | sed 's/-eks$//')
-export STACK_ID=$(aws cloudformation list-stacks --region ${AWS_REGION} \
-    --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
-    --query "StackSummaries[?starts_with(StackName, '${STACK_PREFIX}') && !contains(StackName, 'Stack')].StackName | [0]" \
-    --output text 2>/dev/null)
+# First try to find the exact match (main stack)
+export STACK_ID=$(aws cloudformation describe-stacks --stack-name "${STACK_PREFIX}" --region ${AWS_REGION} \
+    --query 'Stacks[0].StackName' --output text 2>/dev/null)
+
+# If exact match not found, search for stacks with the prefix
+if [[ -z "${STACK_ID}" || "${STACK_ID}" == "None" ]]; then
+    export STACK_ID=$(aws cloudformation list-stacks --region ${AWS_REGION} \
+        --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
+        --query "StackSummaries[?starts_with(StackName, '${STACK_PREFIX}') && !contains(StackName, 'Stack')].StackName | [0]" \
+        --output text 2>/dev/null)
+fi
 
 if [[ -z "${STACK_ID}" || "${STACK_ID}" == "None" ]]; then
     echo "[ERROR] Could not find CloudFormation stack for ${EKS_CLUSTER_NAME}"
