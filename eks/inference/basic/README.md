@@ -55,20 +55,14 @@ kubectl get pods -w
 
 ```bash
 # 문제 해결 스크립트 실행
-./fix_deployment_issues.sh
+cd ../../setup
+./4.free_idle_pods_for_workshop.sh
+cd -
 
 # 기존 배포 삭제 후 재배포
 kubectl delete deployment deepseek15b
 kubectl apply -f deploy_S3_direct.yaml
 ```
-
-이 스크립트는:
-- Kueue/KEDA 등 불필요한 시스템 Pod 정리
-- 완료된 Job Pod 삭제
-- PVC 바인딩 문제 해결
-- Webhook 설정 제거
-
-실행 후 다시 배포하세요.
 
 ## 📊 테스트 
 

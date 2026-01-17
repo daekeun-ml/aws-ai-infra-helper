@@ -3,12 +3,15 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
-### v1.0.8
-- **HyperPod EKS Training 핸즈온 추가**: EKS 기반 분산 학습 클러스터 설정 및 운영 가이드
-- **Inference 핸즈온 워크샵 최적화**: Workshop Studio 환경에 맞춘 추론 실습 가이드 및 자동화 스크립트 개선
+### v1.0.9
+- **Workshop Studio 지원 강화**: Worksho Studio의 저샤앙 GPU 리소스(예: `ml.g5.2xlarge`)에서도 핸즈온 가능하도록 개선 
 
 <details>
 <summary>클릭하여 전체 업데이트 내역 보기</summary>
+
+### v1.0.8
+- **HyperPod EKS Training 핸즈온 추가**: EKS 기반 분산 학습 클러스터 설정 및 운영 가이드
+- **Inference 핸즈온 워크샵 최적화**: Workshop Studio 환경에 맞춘 추론 실습 가이드 및 자동화 스크립트 개선
 
 ### v1.0.7
 - **HyperPod EKS Task Governance 핸즈온 추가**: 팀과 프로젝트 간의 리소스 할당을 간소화하고 컴퓨팅 리소스의 효율적인 활용을 보장하는 관리 환경 구성

@@ -46,8 +46,20 @@ HyperPod EKS 클러스터 생성 후 필요한 추가 설정을 위한 스크립
 - Kubeflow Training Operator 상태 확인
 - 스토리지 클래스 및 권한 검증
 
+### 4. 워크샵 환경 최적화 (선택사항)
 
-### 4. 환경 변수 로드
+```bash
+./4.free_idle_pods_for_workshop.sh
+```
+
+**⚠️ Workshop Studio에서 `ml.g5.2xlarge` 등 저사양 인스턴스 사용 시에만 실행**
+
+- 불필요한 시스템 Pod 정리 (Kueue, KEDA 등)
+- 완료된 Job Pod 삭제  
+- Pod 개수 제한으로 인한 배포 실패 해결
+- 학습, 배포, task governance 등 핸즈온 실행 전 Pod 슬롯 확보
+
+### 5. 환경 변수 로드
 
 ```bash
 source ./env_vars

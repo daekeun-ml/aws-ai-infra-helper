@@ -148,8 +148,8 @@ aws eks describe-addon --region $AWS_REGION --cluster-name $EKS_CLUSTER_NAME --a
 
 스크립트 실행 시:
 1. HyperPod 클러스터를 자동으로 감지하거나 선택할 수 있습니다.
-2. 인스턴스 타입을 선택합니다 (`ml.g5.8xlarge` 또는 `ml.g5.12xlarge`)
-3. 클러스터 정책과 두 팀의 컴퓨팅 할당을 자동으로 생성합니다.
+2. 인스턴스 타입을 선택합니다 (예: `ml.g5.8xlarge`, `ml.g5.12xlarge`)
+3. 클러스터 정책과 두 팀의 컴퓨팅 할당이 자동으로 생성됩니다.
 
 **참고**: 기존 설정이 있는 경우 삭제하지 않고 그대로 유지됩니다.
 
@@ -236,15 +236,7 @@ aws sagemaker \
 
 클러스터 정책과 컴퓨팅 할당이 구성되면, HyperPod task governance의 다양한 측면을 보여주는 다음 예제들을 실행할 수 있습니다:
 
-`ml.g5.8xlarge`의 경우 아래 폴더로 이동합니다.
-```bash
-cd g5.8xlarge
-```
-
-`ml.g5.12xlarge`의 경우 아래 폴더로 이동합니다.
-```bash
-cd g5.12xlarge
-```
+**참고**: `setup-task-governance.sh` 스크립트 실행 시 선택한 인스턴스 타입에 맞는 YAML 파일들이 현재 디렉토리에 자동으로 생성됩니다.
 
 ### Job 1: 유휴 컴퓨팅 사용
 
@@ -344,6 +336,24 @@ kubectl delete -f 2-imagenet-gpu-team-b-higher-prio.yaml
 ```
 
 이제 Team A가 다시 학습을 진행할 수 있으며, 콘솔 창에서 Team A의 학습 task가 **Running** 인 것을 확인할 수 있습니다. 다만 본 코드에서는 체크포인트 복구 로직을 구현하지 않았기에, 다시 처음부터 훈련을 진행하게 됩니다.
+
+## 트러블슈팅
+
+### 네임스페이스 Stuck 문제
+
+만약 `setup-task-governance.sh` 실행 시 다음과 같은 에러가 발생하면:
+
+```
+An error occurred (ValidationException) when calling the CreateComputeQuota operation: ...
+```
+
+또는 네임스페이스가 `Terminating` 상태에서 오랫동안 멈춰있다면, 다음 스크립트를 실행하여 문제를 해결할 수 있습니다:
+
+```bash
+./fix-stuck-namespaces.sh
+```
+
+이 스크립트는 stuck된 hyperpod 네임스페이스들을 강제로 정리합니다. 실행 후 `setup-task-governance.sh`를 다시 실행해보세요.
 
 ## 모범 사례
 
