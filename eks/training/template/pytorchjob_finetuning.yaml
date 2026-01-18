@@ -1,0 +1,190 @@
+apiVersion: "kubeflow.org/v1"
+kind: PyTorchJob
+metadata:
+  name: deepseek-finetuning
+spec:
+  nprocPerNode: "1"
+  pytorchReplicaSpecs:
+    Worker:
+      replicas: 2
+      restartPolicy: OnFailure
+      template:
+        spec:
+          containers:
+            - name: pytorch
+              image: huggingface/transformers-pytorch-gpu:latest
+              imagePullPolicy: Always
+              command: ["/bin/bash"]
+              args:
+                - -c
+                - |
+                  echo "Installing dependencies..."
+                  pip install peft accelerate bitsandbytes trl datasets --quiet
+
+                  python3 << 'TRAINING_SCRIPT'
+                  import os
+                  import json
+                  import torch
+                  from transformers import (
+                      AutoModelForCausalLM,
+                      AutoTokenizer,
+                      TrainingArguments,
+                      Trainer,
+                      DataCollatorForSeq2Seq,
+                  )
+                  from peft import LoraConfig, get_peft_model, TaskType
+                  from datasets import load_dataset, Dataset
+
+                  # Configuration
+                  MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+                  OUTPUT_PATH = "/workspace/output"
+                  os.makedirs(OUTPUT_PATH, exist_ok=True)
+
+                  # Distributed training setup
+                  local_rank = int(os.environ.get("LOCAL_RANK", 0))
+                  world_size = int(os.environ.get("WORLD_SIZE", 1))
+                  rank = int(os.environ.get("RANK", 0))
+
+                  print(f"Rank: {rank}, Local Rank: {local_rank}, World Size: {world_size}")
+
+                  # Load tokenizer
+                  print("Loading tokenizer...")
+                  tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
+                  if tokenizer.pad_token is None:
+                      tokenizer.pad_token = tokenizer.eos_token
+
+                  # Load model
+                  print("Loading model...")
+                  model = AutoModelForCausalLM.from_pretrained(
+                      MODEL_NAME,
+                      torch_dtype=torch.bfloat16,
+                      trust_remote_code=True,
+                      device_map={"": local_rank},
+                  )
+
+                  # Configure LoRA
+                  print("Configuring LoRA...")
+                  lora_config = LoraConfig(
+                      task_type=TaskType.CAUSAL_LM,
+                      r=16,
+                      lora_alpha=32,
+                      lora_dropout=0.05,
+                      target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+                  )
+
+                  model = get_peft_model(model, lora_config)
+                  model.print_trainable_parameters()
+
+                  # Load sample training data (Alpaca dataset)
+                  print("Loading training data...")
+                  dataset = load_dataset("tatsu-lab/alpaca", split="train")
+
+                  # Use a small subset for demo
+                  dataset = dataset.shuffle(seed=42).select(range(1000))
+                  train_test = dataset.train_test_split(test_size=0.1)
+                  train_dataset = train_test["train"]
+                  val_dataset = train_test["test"]
+
+                  # Prepare dataset
+                  def format_instruction(example):
+                      if example.get("input", ""):
+                          text = f"### Instruction:\n{example['instruction']}\n\n### Input:\n{example['input']}\n\n### Response:\n{example['output']}"
+                      else:
+                          text = f"### Instruction:\n{example['instruction']}\n\n### Response:\n{example['output']}"
+                      return {"text": text}
+
+                  train_dataset = train_dataset.map(format_instruction)
+                  val_dataset = val_dataset.map(format_instruction)
+
+                  # Tokenize
+                  def tokenize_function(examples):
+                      result = tokenizer(
+                          examples["text"],
+                          truncation=True,
+                          max_length=512,
+                          padding="max_length",
+                      )
+                      result["labels"] = result["input_ids"].copy()
+                      return result
+
+                  train_dataset = train_dataset.map(tokenize_function, batched=True, remove_columns=train_dataset.column_names)
+                  val_dataset = val_dataset.map(tokenize_function, batched=True, remove_columns=val_dataset.column_names)
+
+                  # Training arguments
+                  training_args = TrainingArguments(
+                      output_dir=OUTPUT_PATH,
+                      num_train_epochs=1,
+                      per_device_train_batch_size=2,
+                      per_device_eval_batch_size=2,
+                      gradient_accumulation_steps=4,
+                      learning_rate=2e-4,
+                      weight_decay=0.01,
+                      warmup_steps=50,
+                      logging_steps=10,
+                      save_steps=100,
+                      eval_strategy="steps",
+                      eval_steps=50,
+                      save_total_limit=2,
+                      bf16=True,
+                      dataloader_num_workers=2,
+                      ddp_find_unused_parameters=False,
+                      report_to="none",
+                  )
+
+                  # Data collator
+                  data_collator = DataCollatorForSeq2Seq(
+                      tokenizer=tokenizer,
+                      model=model,
+                      padding=True,
+                  )
+
+                  # Trainer
+                  trainer = Trainer(
+                      model=model,
+                      args=training_args,
+                      train_dataset=train_dataset,
+                      eval_dataset=val_dataset,
+                      data_collator=data_collator,
+                  )
+
+                  # Train
+                  print("Starting training...")
+                  trainer.train()
+
+                  # Save the model
+                  print("Saving model...")
+                  if rank == 0:
+                      trainer.save_model(os.path.join(OUTPUT_PATH, "final_model"))
+                      tokenizer.save_pretrained(os.path.join(OUTPUT_PATH, "final_model"))
+
+                  print("Training completed!")
+                  TRAINING_SCRIPT
+              env:
+                - name: NCCL_DEBUG
+                  value: "INFO"
+                - name: NCCL_SOCKET_IFNAME
+                  value: "eth0"
+                - name: HF_HOME
+                  value: "/workspace/cache/huggingface"
+                - name: TRANSFORMERS_CACHE
+                  value: "/workspace/cache/huggingface"
+              volumeMounts:
+                - name: workspace
+                  mountPath: /workspace
+                - name: dshm
+                  mountPath: /dev/shm
+              resources:
+                limits:
+                  nvidia.com/gpu: 1
+                requests:
+                  cpu: "8"
+                  memory: "32Gi"
+                  nvidia.com/gpu: 1
+          volumes:
+            - name: workspace
+              emptyDir:
+                sizeLimit: "100Gi"
+            - name: dshm
+              emptyDir:
+                medium: Memory
+                sizeLimit: "16Gi"
