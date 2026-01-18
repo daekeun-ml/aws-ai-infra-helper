@@ -102,9 +102,7 @@ source ./env_vars
 > 1. 올바른 Lifecycle 스크립트 업로드:
 > ```bash
 > source env_vars
-> aws s3 cp \
->   ../../build/awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/LifecycleScripts/base-config/on_create.sh \
->   s3://${S3_BUCKET_NAME}/on_create.sh
+> aws s3 cp lifecycle-scripts/on_create.sh s3://${S3_BUCKET_NAME}/on_create.sh
 > ```
 >
 > 2. 클러스터 업데이트로 노드 재프로비저닝:
