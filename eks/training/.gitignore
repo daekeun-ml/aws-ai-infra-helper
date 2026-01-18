@@ -3,6 +3,9 @@ copy_model_to_fsx.yaml
 prepare_sample_data.yaml
 pytorchjob_finetuning.yaml
 
+# Template files are allowed (no credentials)
+!template/*.yaml
+
 # Temporary files
 *.tmp
 *.log

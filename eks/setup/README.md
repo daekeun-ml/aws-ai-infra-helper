@@ -80,3 +80,57 @@ source ./env_vars
 - 클러스터 연결 실패 시: kubeconfig가 올바르게 설정되었는지 확인
 - 여러 클러스터가 있는 경우: 스크립트가 자동으로 선택 옵션을 제공합니다.
 - kubectl/helm이 없는 경우: 스크립트가 자동으로 설치합니다.
+
+---
+
+> **Note - 2026년 1월 18일 워크샵 환경에서 실행하는 경우**
+>
+> `3.validate-cluster.sh` 실행 시 `❌ No nodes found` 에러가 발생할 수 있습니다.
+>
+> **원인**: S3 버킷의 `on_create.sh`가 존재하지 않는 `on_create_main.sh`를 호출하여 Lifecycle 스크립트 실패
+>
+> **해결 방법**:
+>
+> 1. 올바른 Lifecycle 스크립트 업로드:
+> ```bash
+> source env_vars
+> aws s3 cp \
+>   ../../build/awsome-distributed-training/1.architectures/7.sagemaker-hyperpod-eks/LifecycleScripts/base-config/on_create.sh \
+>   s3://${S3_BUCKET_NAME}/on_create.sh
+> ```
+>
+> 2. 클러스터 업데이트로 노드 재프로비저닝:
+> ```bash
+> aws sagemaker update-cluster \
+>   --cluster-name ${HYPERPOD_CLUSTER_NAME} \
+>   --instance-groups '[{
+>     "InstanceGroupName": "accelerated-worker-group-1",
+>     "InstanceType": "ml.g5.8xlarge",
+>     "InstanceCount": 2,
+>     "LifeCycleConfig": {
+>       "SourceS3Uri": "s3://'"${S3_BUCKET_NAME}"'/",
+>       "OnCreate": "on_create.sh"
+>     },
+>     "ExecutionRole": "arn:aws:iam::'"$(aws sts get-caller-identity --query Account --output text)"':role/sagemaker-hyperpod-eks-SMHP-Exec-Role-'"${AWS_REGION}"'",
+>     "ThreadsPerCore": 1,
+>     "InstanceStorageConfigs": [{"EbsVolumeConfig": {"VolumeSizeInGB": 500}}]
+>   }]' \
+>   --region ${AWS_REGION}
+> ```
+>
+> > "Unable to update cluster as there are no changes" 에러 시 `SourceS3Uri` 끝의 `/`를 추가/제거 후 재실행
+>
+> 3. 노드 프로비저닝 대기 (약 3-5분):
+> ```bash
+> watch -n 10 "aws sagemaker describe-cluster \
+>   --cluster-name ${HYPERPOD_CLUSTER_NAME} \
+>   --region ${AWS_REGION} \
+>   --query 'InstanceGroups[*].{Name:InstanceGroupName,Current:CurrentCount,Target:TargetCount}' \
+>   --output table"
+> ```
+>
+> 4. 노드 확인 후 validation 재실행:
+> ```bash
+> kubectl get nodes
+> ./3.validate-cluster.sh
+> ```
