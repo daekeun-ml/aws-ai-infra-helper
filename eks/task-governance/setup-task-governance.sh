@@ -136,6 +136,24 @@ esac
 
 echo "Selected instance type: $INSTANCE_TYPE"
 
+# Create namespaces if they don't exist
+echo ""
+echo "Creating namespaces..."
+
+if kubectl get namespace hyperpod-ns-team-a >/dev/null 2>&1; then
+    echo "✅ Namespace hyperpod-ns-team-a already exists."
+else
+    kubectl create namespace hyperpod-ns-team-a
+    echo "✅ Namespace hyperpod-ns-team-a created."
+fi
+
+if kubectl get namespace hyperpod-ns-team-b >/dev/null 2>&1; then
+    echo "✅ Namespace hyperpod-ns-team-b already exists."
+else
+    kubectl create namespace hyperpod-ns-team-b
+    echo "✅ Namespace hyperpod-ns-team-b created."
+fi
+
 # Create cluster scheduler config
 echo ""
 echo "Creating cluster scheduler config..."
