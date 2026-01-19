@@ -7,6 +7,9 @@ aws eks create-addon \
   --addon-name eks-pod-identity-agent \
   --region $AWS_REGION 2>/dev/null || echo "이미 설치됨"
 
+echo "Pod Identity Agent 설치 대기 중..."
+sleep 30
+
 # 2. IAM Role 생성 (Pod Identity Trust Policy)
 echo "2. IAM Role 생성..."
 cat <<EOF > /tmp/trust-policy.json
@@ -41,12 +44,18 @@ aws iam attach-role-policy \
   --role-name $ROLE_NAME \
   --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
 
+echo "IAM 정책 연결 대기 중..."
+sleep 10
+
 # 4. S3 CSI Driver Add-on 설치
 echo "4. S3 CSI Driver Add-on 설치..."
 aws eks create-addon \
   --cluster-name $EKS_CLUSTER_NAME \
   --addon-name aws-mountpoint-s3-csi-driver \
   --region $AWS_REGION 2>/dev/null || echo "이미 설치됨"
+
+echo "S3 CSI Driver 설치 대기 중..."
+sleep 30
 
 # 5. Pod Identity Association 생성
 echo "5. Pod Identity Association 생성..."
@@ -57,6 +66,14 @@ aws eks create-pod-identity-association \
   --role-arn ${ROLE_ARN} \
   --region $AWS_REGION 2>/dev/null || echo "Association 이미 존재"
 
+echo "Pod Identity Association 설정 대기 중..."
+sleep 15
+
 # 6. CSI Driver Pod 재시작
 echo "6. CSI Driver Pod 재시작..."
 kubectl rollout restart daemonset -n kube-system s3-csi-node
+
+echo "CSI Driver Pod 재시작 대기 중..."
+sleep 20
+
+echo "S3 CSI Driver 설정 완료!"
