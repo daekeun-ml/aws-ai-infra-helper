@@ -63,7 +63,7 @@ else
 fi
 
 # Auto-detect GPU partition
-gpu_partitions=($(sinfo -h -o "%R" | grep -E '[\.\-](g|p)[0-9]' | sed 's/\*//' || echo ""))
+gpu_partitions=($(sinfo -h -o "%R" | sed 's/\*//' | grep -iE '(g|p)[0-9]' || echo ""))
 
 if [ ${#gpu_partitions[@]} -eq 0 ]; then
     echo "No GPU partition found."
