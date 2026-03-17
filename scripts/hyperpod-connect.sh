@@ -85,30 +85,38 @@ SPECIFIC_LOGIN_GROUP=$3
 echo "🔍 Retrieving cluster information..."
 
 # Get cluster ID
-CLUSTER_ARN=$(aws sagemaker describe-cluster --cluster-name "$CLUSTER_NAME" --query 'ClusterArn' --output text --region "$REGION")
+CLUSTER_ARN=$(aws sagemaker describe-cluster --cluster-name "$CLUSTER_NAME" --query 'ClusterArn' --output text --region "$REGION" 2>&1)
+if echo "$CLUSTER_ARN" | grep -qi "error\|invalid\|not found"; then
+    echo "❌ Failed to describe cluster: $CLUSTER_ARN"
+    exit 1
+fi
 CLUSTER_ID=$(echo "$CLUSTER_ARN" | cut -d'/' -f2)
 
 # Get all cluster nodes and find login node
 echo "🔍 Finding login node..."
-ALL_NODES=$(aws sagemaker list-cluster-nodes --cluster-name "$CLUSTER_NAME" --region "$REGION")
+ALL_NODES=$(aws sagemaker list-cluster-nodes --cluster-name "$CLUSTER_NAME" --region "$REGION" 2>&1)
+if echo "$ALL_NODES" | grep -qi "error\|invalid"; then
+    echo "❌ Failed to list cluster nodes: $ALL_NODES"
+    exit 1
+fi
 
 if [ -n "$SPECIFIC_LOGIN_GROUP" ]; then
     # Use specific login group if provided
-    LOGIN_INFO=$(echo "$ALL_NODES" | jq -r --arg group "$SPECIFIC_LOGIN_GROUP" '.ClusterNodeSummaries[] | select(.InstanceGroupName == $group) | . | @json' | head -n1)
-    if [ -z "$LOGIN_INFO" ] || [ "$LOGIN_INFO" = "null" ]; then
+    LOGIN_INFO=$(echo "$ALL_NODES" | jq -r --arg group "$SPECIFIC_LOGIN_GROUP" '[.ClusterNodeSummaries[] | select(.InstanceGroupName == $group)] | first // empty')
+    if [ -z "$LOGIN_INFO" ]; then
         echo "❌ Specified login group '$SPECIFIC_LOGIN_GROUP' not found"
         echo "Available instance groups:"
-        echo "$ALL_NODES" | jq -r '.ClusterNodeSummaries[].InstanceGroupName' | sort -u
+        echo "$ALL_NODES" | jq -r '[.ClusterNodeSummaries[].InstanceGroupName] | unique[]'
         exit 1
     fi
 else
     # Find the first node with "login" in the instance group name (case insensitive)
-    LOGIN_INFO=$(echo "$ALL_NODES" | jq -r '.ClusterNodeSummaries[] | select(.InstanceGroupName | test("login"; "i")) | . | @json' | head -n1)
-    
-    if [ -z "$LOGIN_INFO" ] || [ "$LOGIN_INFO" = "null" ]; then
+    LOGIN_INFO=$(echo "$ALL_NODES" | jq -r '[.ClusterNodeSummaries[] | select(.InstanceGroupName | ascii_downcase | contains("login"))] | first // empty')
+
+    if [ -z "$LOGIN_INFO" ]; then
         echo "❌ No login node found in cluster $CLUSTER_NAME"
         echo "Available instance groups:"
-        echo "$ALL_NODES" | jq -r '.ClusterNodeSummaries[].InstanceGroupName' | sort -u
+        echo "$ALL_NODES" | jq -r '[.ClusterNodeSummaries[].InstanceGroupName] | unique[]'
         echo ""
         echo "💡 Try specifying the login group name:"
         echo "   $0 $REGION $CLUSTER_NAME <login-group-name>"
@@ -135,4 +143,3 @@ aws ssm start-session \
   --region "$REGION" \
   --document-name AWS-StartInteractiveCommand \
   --parameters command="sudo su - ubuntu"
-

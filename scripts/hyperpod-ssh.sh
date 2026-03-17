@@ -188,35 +188,44 @@ print_header() {
 
 print_header "🚀 HyperPod Cluster Easy SSH Script! 🚀"
 
-cluster_id=$(aws sagemaker describe-cluster "${aws_cli_args[@]}" --cluster-name $cluster_name | jq '.ClusterArn' | awk -F/ '{gsub(/"/, "", $NF); print $NF}')
+DESCRIBE_OUTPUT=$(aws sagemaker describe-cluster "${aws_cli_args[@]}" --cluster-name "$cluster_name" 2>&1)
+if echo "$DESCRIBE_OUTPUT" | grep -qi "error\|invalid\|not found"; then
+    echo "❌ Failed to describe cluster: $DESCRIBE_OUTPUT"
+    exit 1
+fi
+cluster_id=$(echo "$DESCRIBE_OUTPUT" | jq -r '.ClusterArn' | awk -F/ '{print $NF}')
 
 # Auto-detect login/controller group if not specified
 if [[ -z "$node_group" ]]; then
     echo "🔍 Auto-detecting login/controller group..."
-    ALL_NODES=$(aws sagemaker list-cluster-nodes "${aws_cli_args[@]}" --cluster-name "$cluster_name")
+    ALL_NODES=$(aws sagemaker list-cluster-nodes "${aws_cli_args[@]}" --cluster-name "$cluster_name" 2>&1)
+    if echo "$ALL_NODES" | grep -qi "error\|invalid"; then
+        echo "❌ Failed to list cluster nodes: $ALL_NODES"
+        exit 1
+    fi
     
-    # Try to find "login" group first
-    node_group=$(echo "$ALL_NODES" | jq -r '.ClusterNodeSummaries[] | select(.InstanceGroupName | test("login"; "i")) | .InstanceGroupName' | head -n1)
+    # Try to find "login" group first (ascii_downcase for jq cross-platform compatibility)
+    node_group=$(echo "$ALL_NODES" | jq -r '[.ClusterNodeSummaries[] | select(.InstanceGroupName | ascii_downcase | contains("login"))] | first // empty | .InstanceGroupName // empty')
     
     # If no login group, try "controller-machine"
     if [[ -z "$node_group" ]]; then
-        node_group=$(echo "$ALL_NODES" | jq -r '.ClusterNodeSummaries[] | select(.InstanceGroupName == "controller-machine") | .InstanceGroupName' | head -n1)
+        node_group=$(echo "$ALL_NODES" | jq -r '[.ClusterNodeSummaries[] | select(.InstanceGroupName == "controller-machine")] | first // empty | .InstanceGroupName // empty')
     fi
     
     if [[ -z "$node_group" ]]; then
         echo "❌ No login or controller-machine group found. Available groups:"
-        echo "$ALL_NODES" | jq -r '.ClusterNodeSummaries[].InstanceGroupName' | sort -u
+        echo "$ALL_NODES" | jq -r '[.ClusterNodeSummaries[].InstanceGroupName] | unique[]'
         exit 1
     fi
     
     echo "✅ Detected node group: ${node_group}"
 fi
 
-instance_id=$(aws sagemaker list-cluster-nodes "${aws_cli_args[@]}" --cluster-name $cluster_name --instance-group-name-contains ${node_group} | jq '.ClusterNodeSummaries[0].InstanceId' | tr -d '"')
+instance_id=$(aws sagemaker list-cluster-nodes "${aws_cli_args[@]}" --cluster-name "$cluster_name" --instance-group-name-contains "${node_group}" 2>&1 | jq -r '.ClusterNodeSummaries[0].InstanceId // empty')
 
 # Exit immediately if cluster or instance ID is not found.
 if [[ -z "$cluster_id" || -z "$instance_id" ]]; then
-    echo "Error: Cluster or instance not found for the specified cluster name (${cluster_name}). Exiting."
+    echo "❌ Cluster or instance not found for the specified cluster name (${cluster_name}). Exiting."
     exit 1
 fi
 
