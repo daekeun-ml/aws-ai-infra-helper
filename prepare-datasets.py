@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import subprocess
 from datasets import load_dataset
@@ -43,16 +44,16 @@ def sync_to_s3(local_path, s3_path):
         print(f"❌ Failed to sync to S3: {e}")
         return False
 
-def prepare_dataset(name, dataset_config, max_samples=None, dataset_type="pretrain"):
+def prepare_dataset(name, dataset_config, max_samples=None, dataset_type="pretrain", output_dir=None):
     """Download and prepare a single dataset"""
     print(f"\n📥 Preparing {name} ({dataset_type})...")
-    
+
     # Load dataset
     if dataset_config[1]:  # Has config
         dataset = load_dataset(dataset_config[0], dataset_config[1])
     else:
         dataset = load_dataset(dataset_config[0])
-    
+
     # Format based on dataset type
     if dataset_type == "sft":
         if name == "glan-qna-kr":
@@ -61,7 +62,7 @@ def prepare_dataset(name, dataset_config, max_samples=None, dataset_type="pretra
                 return {"text": f"### Question\n{example['question']}\n\n### Answer\n{example['answer']}"}
             dataset = dataset.map(format_qa)
             dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col != 'text'])
-        
+
         elif name in ["emotion", "sst2", "cola", "rte", "imdb", "ag_news", "yelp_polarity"]:
             # Classification format for SFT
             def format_classification(example):
@@ -86,27 +87,29 @@ def prepare_dataset(name, dataset_config, max_samples=None, dataset_type="pretra
                     category = categories[example['label']]
                     return {"text": f"Article: {example['text']}\nCategory: {category}"}
                 return example
-            
+
             dataset = dataset.map(format_classification)
             dataset = dataset.remove_columns([col for col in dataset['train'].column_names if col != 'text'])
-    
+
     # For pretrain datasets, keep original format (text column should exist)
-    
+
     # Limit samples if specified
     if max_samples and 'train' in dataset:
         original_size = len(dataset['train'])
         if original_size > max_samples:
             dataset['train'] = dataset['train'].select(range(max_samples))
             print(f"📊 Limited train samples: {original_size} → {max_samples}")
-    
-    # Save locally
-    output_dir = f"./{name}-prepared"
+
+    # Save to output directory
+    if output_dir is None:
+        output_dir = f"./{name}-prepared"
+    os.makedirs(output_dir, exist_ok=True)
     dataset.save_to_disk(output_dir)
-    
+
     # Print stats
     for split in dataset.keys():
         print(f"📊 {split.capitalize()} samples: {len(dataset[split])}")
-    
+
     return output_dir
 
 def select_datasets():
@@ -180,41 +183,74 @@ def get_description(name):
     return descriptions.get(name, "")
 
 def main():
-    """Main function to prepare datasets and sync to S3"""
+    """Main function to prepare datasets and optionally sync to S3"""
+    parser = argparse.ArgumentParser(description="Prepare datasets for training")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Download datasets directly to /fsx/data/[pretrain|sft]/ without S3 sync (useful for testing without DRA)"
+    )
+    parser.add_argument(
+        "--local-base-dir",
+        default="/fsx/data",
+        help="Base directory for local-only mode (default: /fsx/data)"
+    )
+    args = parser.parse_args()
+
     s3_bucket = os.environ.get('S3_BUCKET_NAME')
-    
-    if not s3_bucket:
+
+    if args.local_only:
+        print(f"📂 Local-only mode: datasets will be saved to {args.local_base_dir}/[pretrain|sft]/")
+        print("⚠️  S3 sync and DRA setup are skipped.\n")
+    elif not s3_bucket:
         print("⚠️  S3_BUCKET_NAME environment variable not set.")
-        print("Set it with: export S3_BUCKET_NAME=your-bucket-name")
+        print("Options:")
+        print("  1. Set S3 bucket:  export S3_BUCKET_NAME=your-bucket-name")
+        print("  2. Local-only mode (no S3/DRA needed):  python3 prepare-datasets.py --local-only")
         return
-    
+
     selected_datasets = select_datasets()
-    print(f"\n🚀 Preparing {len(selected_datasets)} dataset(s) for S3 bucket: {s3_bucket}")
-    
+
+    if args.local_only:
+        subprocess.run(["sudo", "mkdir", "-p", args.local_base_dir], check=False)
+        subprocess.run(["sudo", "chown", "ubuntu:ubuntu", args.local_base_dir], check=False)
+        print(f"\n🚀 Preparing {len(selected_datasets)} dataset(s) → {args.local_base_dir}/")
+    else:
+        print(f"\n🚀 Preparing {len(selected_datasets)} dataset(s) for S3 bucket: {s3_bucket}")
+
     for name in selected_datasets:
         try:
             config = DATASETS[name]
             dataset_type = config[3]
-            s3_path = f"s3://{s3_bucket}/data/{dataset_type}/{name}/"
-            
-            if check_s3_exists(s3_path):
-                print(f"✅ {name} already exists in S3, skipping...")
-                continue
-            
-            local_dir = prepare_dataset(name, config, config[2], dataset_type)
-            sync_to_s3(local_dir, s3_path)
-            
-            # Fix ownership to ubuntu
-            subprocess.run(["sudo", "chown", "-R", "ubuntu:ubuntu", local_dir], check=False)
-            
-            subprocess.run(["rm", "-rf", local_dir], check=False)
-            print(f"🧹 Cleaned up local files for {name}")
-            
+
+            if args.local_only:
+                # Save directly to /fsx/data/pretrain/<name> or /fsx/data/sft/<name>
+                dest_dir = os.path.join(args.local_base_dir, dataset_type, name)
+                if os.path.exists(dest_dir) and os.listdir(dest_dir):
+                    print(f"✅ {name} already exists at {dest_dir}, skipping...")
+                    continue
+                prepare_dataset(name, config, config[2], dataset_type, output_dir=dest_dir)
+                subprocess.run(["sudo", "chown", "-R", "ubuntu:ubuntu", dest_dir], check=False)
+                print(f"📍 Saved to {dest_dir}")
+            else:
+                s3_path = f"s3://{s3_bucket}/data/{dataset_type}/{name}/"
+                if check_s3_exists(s3_path):
+                    print(f"✅ {name} already exists in S3, skipping...")
+                    continue
+                local_dir = prepare_dataset(name, config, config[2], dataset_type)
+                sync_to_s3(local_dir, s3_path)
+                subprocess.run(["sudo", "chown", "-R", "ubuntu:ubuntu", local_dir], check=False)
+                subprocess.run(["rm", "-rf", local_dir], check=False)
+                print(f"🧹 Cleaned up local files for {name}")
+
         except Exception as e:
             print(f"❌ Failed to prepare {name}: {e}")
-    
+
     print(f"\n🎉 Selected datasets prepared!")
-    print(f"📍 Available at: s3://{s3_bucket}/data/[pretrain|sft]/")
+    if args.local_only:
+        print(f"📍 Available at: {args.local_base_dir}/[pretrain|sft]/")
+    else:
+        print(f"📍 Available at: s3://{s3_bucket}/data/[pretrain|sft]/")
 
 if __name__ == "__main__":
     main()

@@ -56,13 +56,38 @@ def find_latest_checkpoint(checkpoint_dir):
     latest_ckpt = max(ckpt_dirs, key=lambda x: os.path.getmtime(os.path.join(checkpoint_dir, x)))
     return latest_ckpt
 
+FP8_PRECISIONS = {"fp8-cs", "fp8-mx"}
+
+def resolve_precision(precision: str):
+    """
+    Map user-facing precision names to a Lightning Fabric precision value.
+    - fp8-cs / fp8-mx : returns a TransformerEnginePrecision plugin instance
+    - anything else   : returns the string as-is
+    FP8 via Transformer Engine cannot be passed as a plain string when using
+    FSDPStrategy — it must be provided as a plugin object.
+    """
+    if precision in FP8_PRECISIONS:
+        if precision == "fp8-mx":
+            warnings.warn(
+                "fp8-mx (MXFP8 / B200) is not natively supported by Lightning Fabric 2.6.x. "
+                "Falling back to transformer-engine (fp8-cs style). "
+                "Upgrade Lightning / use torchao when support lands.",
+                stacklevel=2,
+            )
+        from lightning.fabric.plugins import TransformerEnginePrecision
+        return TransformerEnginePrecision(weights_dtype=torch.bfloat16)
+    return precision
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--nodes', type=int, default=1)
     parser.add_argument('--gpus', type=int, default=1)
     parser.add_argument('--epochs', type=int, default=1)
     parser.add_argument('--max_steps', type=int, default=100)
+    parser.add_argument('--precision', type=str, default="bf16-mixed")
     parser.add_argument('--batch_size', type=int, default=4)
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1)
     parser.add_argument('--dataset', type=str, default="wikitext")
     parser.add_argument('--dataset_config', type=str, default="wikitext-2-raw-v1")
     parser.add_argument('--model_name', type=str, default="Qwen/Qwen3-0.6B")
@@ -74,16 +99,27 @@ def main():
     parser.add_argument('--save_every_n_steps', type=int, default=100)
     parser.add_argument('--checkpoint_dir', type=str, default="./checkpoints")
     args = parser.parse_args()
-    
-    # Setup Fabric with FSDP
-    strategy = FSDPStrategy(state_dict_type="sharded")
-    fabric = L.Fabric(
-        accelerator="cuda",
-        devices=args.gpus,
-        num_nodes=args.nodes,
-        strategy=strategy,
-        precision="16-mixed"
-    )
+
+    # Setup Fabric — FSDP for non-FP8, DDP for FP8 (Lightning 2.6 FSDPStrategy does not support TE FP8)
+    precision = resolve_precision(args.precision)
+    from lightning.fabric.plugins import TransformerEnginePrecision as _TEP
+    if isinstance(precision, _TEP):
+        fabric = L.Fabric(
+            accelerator="cuda",
+            devices=args.gpus,
+            num_nodes=args.nodes,
+            strategy="ddp",
+            plugins=[precision],
+        )
+    else:
+        strategy = FSDPStrategy(state_dict_type="sharded")
+        fabric = L.Fabric(
+            accelerator="cuda",
+            devices=args.gpus,
+            num_nodes=args.nodes,
+            strategy=strategy,
+            precision=precision,
+        )
     fabric.launch()
     
     # Create model and optimizer
@@ -92,6 +128,9 @@ def main():
         tokenizer = AutoTokenizer.from_pretrained(args.model_name)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
+
+    num_params = sum(p.numel() for p in model.parameters())
+    fabric.print(f"Model parameters: {num_params / 1e9:.3f}B")
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     
@@ -142,76 +181,90 @@ def main():
             break
             
         batch_count = 0
+        ga = args.gradient_accumulation_steps
+        accumulated_loss = 0.0
+        step_start_time = time.time()
+
         for batch_idx, batch in enumerate(dataloader):
             if step_count >= max_steps:
                 break
-            
-            step_start_time = time.time()
-            
+
             # Limit train batches
             if args.limit_train_batches < 1.0:
                 if batch_count >= int(len(dataloader) * args.limit_train_batches):
                     break
-            
+
+            is_accumulating = (batch_count % ga) != (ga - 1)
+
             input_ids = batch
             labels = input_ids.clone()
-            
-            outputs = model(input_ids=input_ids, labels=labels)
-            loss = outputs.loss
-            
-            fabric.backward(loss)
-            
-            # Calculate gradient norm (FSDP handles gradient management internally)
-            total_norm = 0.0
-            for p in model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            grad_norm = total_norm ** (1. / 2)
-            
-            optimizer.step()
-            optimizer.zero_grad()
-            
-            step_end_time = time.time()
-            step_time = step_end_time - step_start_time
-            step_times.append(step_time)
-            
-            # Keep only last 100 step times for moving average
-            if len(step_times) > 100:
-                step_times.pop(0)
-            
-            if step_count % 10 == 0:
-                avg_step_time = sum(step_times) / len(step_times)
-                samples_per_sec = args.batch_size / avg_step_time
-                elapsed_time = time.time() - start_time
-                
-                fabric.print(
-                    f"STEP {step_count}/{max_steps} | "
-                    f"Epoch {current_epoch} | "
-                    f"Loss: {loss.item():.4f} | "
-                    f"Grad Norm: {grad_norm:.4f} | "
-                    f"LR: {optimizer.param_groups[0]['lr']:.2e} | "
-                    f"Samples/sec: {samples_per_sec:.2f} | "
-                    f"Time: {elapsed_time:.1f}s"
-                )
-            
-            # Save checkpoint
-            if step_count % args.save_every_n_steps == 0 and step_count > iteration:
-                checkpoint_path = os.path.join(args.checkpoint_dir, f"checkpoint-epoch-{current_epoch:02d}-step-{step_count}")
-                state = {
-                    "model": model, 
-                    "optimizer": optimizer, 
-                    "iteration": step_count,
-                    "epoch": current_epoch
-                }
-                fabric.save(checkpoint_path, state)
-                fabric.print(f"Saved checkpoint: {checkpoint_path}")
-                
-                # Update latest.txt
-                with open(os.path.join(args.checkpoint_dir, "latest.txt"), "w") as f:
-                    f.write(f"checkpoint-epoch-{current_epoch:02d}-step-{step_count}")
-            
-            step_count += 1
+
+            with fabric.no_backward_sync(model, enabled=is_accumulating):
+                outputs = model(input_ids=input_ids, labels=labels)
+                loss = outputs.loss / ga
+                fabric.backward(loss)
+
+            accumulated_loss += loss.item()
+
+            if not is_accumulating:
+                # Calculate gradient norm
+                total_norm = 0.0
+                for p in model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                grad_norm = total_norm ** (1. / 2)
+
+                optimizer.step()
+                optimizer.zero_grad()
+
+                step_end_time = time.time()
+                step_time = step_end_time - step_start_time
+                step_times.append(step_time)
+                if len(step_times) > 100:
+                    step_times.pop(0)
+
+                if step_count % 10 == 0:
+                    avg_step_time = sum(step_times) / len(step_times)
+                    elapsed_time = time.time() - start_time
+                    # tokens per second across all ranks (GA 포함한 실제 GBS 기준)
+                    tokens_per_step = args.batch_size * args.max_length * fabric.world_size * ga
+                    tps    = tokens_per_step / avg_step_time if avg_step_time > 0 else 0.0
+                    tflops = 6 * num_params * tokens_per_step / avg_step_time / 1e12 if avg_step_time > 0 else 0.0
+                    samples_per_sec = args.batch_size * ga / avg_step_time
+
+                    fabric.print(
+                        f"STEP {step_count}/{max_steps} | "
+                        f"Epoch {current_epoch} | "
+                        f"Loss: {accumulated_loss:.4f} | "
+                        f"Grad Norm: {grad_norm:.4f} | "
+                        f"LR: {optimizer.param_groups[0]['lr']:.2e} | "
+                        f"Samples/sec: {samples_per_sec:.2f} | "
+                        f"TPS: {tps:,.0f} | "
+                        f"TFLOPs/s: {tflops:.3f} | "
+                        f"Time: {elapsed_time:.1f}s"
+                    )
+
+                accumulated_loss = 0.0
+
+                # Save checkpoint
+                if step_count % args.save_every_n_steps == 0 and step_count > iteration:
+                    checkpoint_path = os.path.join(args.checkpoint_dir, f"checkpoint-epoch-{current_epoch:02d}-step-{step_count}")
+                    state = {
+                        "model": model,
+                        "optimizer": optimizer,
+                        "iteration": step_count,
+                        "epoch": current_epoch
+                    }
+                    fabric.save(checkpoint_path, state)
+                    fabric.print(f"Saved checkpoint: {checkpoint_path}")
+
+                    with open(os.path.join(args.checkpoint_dir, "latest.txt"), "w") as f:
+                        f.write(f"checkpoint-epoch-{current_epoch:02d}-step-{step_count}")
+
+                step_count += 1
+                step_start_time = time.time()
+
             batch_count += 1
     
     # Final checkpoint

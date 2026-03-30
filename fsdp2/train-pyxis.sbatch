@@ -13,7 +13,7 @@ set -ex;
 
 # CUDA configuration
 export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0;10.0;10.3"  # P4/A100, A10G, L4/L40S, P5/H100, P6/B200, GB300/B300
-CUDA_VERSION=${CUDA_VERSION:-"12.8"}
+CUDA_VERSION=${CUDA_VERSION:-"12.9"}
 if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
     export CUDA_HOME="/usr/local/cuda-${CUDA_VERSION}"
     export PATH="$CUDA_HOME/bin:$PATH"

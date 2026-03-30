@@ -2,7 +2,7 @@
 
 ## 개요
 
-FSDP2는 PyTorch 2.1+에서 제공하는 차세대 분산 학습 전략으로, DTensor를 기반으로 한 더 효율적이고 사용하기 쉬운 분산 학습을 제공합니다. 이 가이드는 AWS SageMaker HyperPod의 Slurm 클러스터 환경에서 FSDP2를 사용하여 Qwen 3 0.6B 모델을 학습하는 방법을 설명합니다.
+FSDP2는 PyTorch 2.1+에서 제공하는 차세대 분산 학습 전략으로, DTensor를 기반으로 한 더 효율적이고 사용하기 쉬운 분산 학습을 제공합니다. 이 가이드는 AWS SageMaker HyperPod의 Slurm 클러스터 환경에서 FSDP2를 사용하여 모델을 학습하는 방법을 설명합니다.
 
 ## 주요 특징
 
@@ -21,49 +21,89 @@ FSDP2는 PyTorch 2.1+에서 제공하는 차세대 분산 학습 전략으로, D
 - **일관된 API**: 단일 디바이스와 분산 학습에서 동일한 코드 사용
 - **효율적인 체크포인트**: 통신 없이 분산 상태 딕셔너리 저장/로딩
 
-## 사전 요구사항
+## 데이터셋 준비
 
-### 인프라 구성
+학습 전 `prepare-datasets.py` (상위 디렉토리)로 데이터셋을 다운로드합니다.
 
-1. **Slurm 클러스터**: AWS ParallelCluster 또는 SageMaker HyperPod로 구성된 Slurm 클러스터
-2. **공유 파일시스템**: FSx for Lustre 또는 EFS
-3. **Python 환경**: Python 3.8 이상
-4. **PyTorch**: PyTorch 2.1 이상 (FSDP2 지원)
-5. **Pyxis+Enroot** (선택사항): 컨테이너 기반 학습을 위한 Slurm 플러그인
+### 지원 데이터셋
 
-### 필수 패키지 설치
+| 이름 | 용도 | 샘플 수 | 비고 |
+|---|---|---|---|
+| `wikitext-2` | Pretrain | ~36k | 기본 예제용 |
+| `wikitext-103` | Pretrain | 180k (제한) | 대규모 사전학습 |
+| `emotion` | SFT | ~20k | 감정 분류 (6종) |
+| `sst2` | SFT | ~67k | 감성 분석 (GLUE) |
+| `imdb` | SFT | ~50k | 영화 리뷰 감성 분석 |
+| `ag_news` | SFT | ~120k | 뉴스 카테고리 분류 |
+| `glan-qna-kr` | SFT | 150k (제한) | 한국어 Q&A |
+
+### 로컬 다운로드 (FSx / EFS)
+
+S3 없이 공유 파일시스템에 바로 저장합니다:
 
 ```bash
-# PyTorch 및 관련 패키지 (2.1+ 필수)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+cd /fsx/ubuntu/aws-ai-infra-helper
 
-# HuggingFace 및 데이터셋
-pip install transformers datasets tokenizers accelerate
+# 대화형 선택 (wikitext-2 권장 — 기본 예제)
+python3 prepare-datasets.py --local-only
 
-# 모니터링 및 유틸리티
-pip install wandb tensorboard tqdm
+# 저장 경로 변경 (기본: /fsx/data)
+python3 prepare-datasets.py --local-only --local-base-dir /fsx/data
 ```
 
-또는 UV를 사용하는 경우:
+실행하면 아래와 같이 선택 메뉴가 나타납니다:
 
-```bash
-# UV 설치
-curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+Continual Pre-training datasets:
+  1. wikitext-2 - Language modeling dataset (~36k samples)
+  2. wikitext-103 - Large language modeling dataset (limited to 180k)
 
-# 프로젝트 의존성 동기화
-uv sync
+Supervised Fine-tuning datasets:
+  3. emotion - ...
+  ...
+  11. All pretrain datasets
+  12. All SFT datasets
+  13. All datasets
+
+Select datasets (1-13, comma-separated): 1
 ```
 
-### Pyxis+Enroot 환경 설정 (선택사항)
+다운로드 후 저장 경로:
+```
+/fsx/data/
+├── pretrain/
+│   ├── wikitext-2/      ← FSDP2 기본 예제에서 사용
+│   └── wikitext-103/
+└── sft/
+    ├── emotion/
+    └── ...
+```
 
-컨테이너 기반 학습을 위한 환경 구성:
+### S3 업로드 후 Data Repository Association (DRA) 사용
+
+S3에 업로드한 뒤 FSx for Lustre DRA로 마운트하는 방식입니다:
 
 ```bash
-# Docker 이미지 빌드 및 Enroot 변환
-./setup-pyxis.sh
+cd /fsx/ubuntu/aws-ai-infra-helper
 
-# 생성된 이미지 확인
-ls -lh fsdp2-training.sqsh
+# S3 버킷 지정 후 실행
+export S3_BUCKET_NAME=your-bucket-name
+python3 prepare-datasets.py
+```
+
+데이터가 `s3://<bucket>/data/pretrain/<name>/` 경로로 저장되고, DRA를 통해 `/fsx/data/pretrain/<name>/`으로 자동 마운트됩니다.
+
+### 학습 스크립트에서의 데이터셋 경로 설정
+
+```bash
+# 로컬 파일시스템 사용 시 (local-only 또는 DRA 마운트)
+DATASET="/fsx/data/pretrain/wikitext-2"
+LOCAL_DATASET=true
+
+# HuggingFace Hub에서 스트리밍 사용 시
+DATASET="allenai/c4"
+DATASET_CONFIG_NAME="en"
+LOCAL_DATASET=false
 ```
 
 ## 환경 준비
@@ -129,12 +169,46 @@ for param in model.parameters():
     print(f"Local shard shape: {param.to_local().shape}")
 ```
 
+## 모델 프리셋 시스템
+
+`src/presets/` 디렉토리에 모델별 JSON 파일로 아키텍처 설정을 관리합니다. `--preset` 인자 하나로 모든 모델 파라미터가 자동으로 적용되며, CLI 인자로 개별 값을 오버라이드할 수 있습니다.
+
+```bash
+# 프리셋 사용
+torchrun ... train_fsdp2.py --preset llama-3.1-8b --dataset /path/to/data
+
+# 프리셋 + 개별 값 오버라이드 (CLI가 항상 우선)
+torchrun ... train_fsdp2.py --preset llama-3.1-8b --max_context_width 4096
+```
+
+### 프리셋 추가 방법
+
+`src/presets/<모델명>.json` 파일을 생성합니다:
+
+```json
+{
+    "_description": "My custom model — https://huggingface.co/...",
+    "model_type": "my_model",
+    "tokenizer": "org/model-name",
+    "hidden_width": 4096,
+    "num_layers": 32,
+    "num_heads": 32,
+    "num_key_value_heads": 8,
+    "intermediate_size": 14336,
+    "max_context_width": 8192,
+    "vocab_size": 128256,
+    "rotary_emb_base": 500000
+}
+```
+
+`_`로 시작하는 키는 주석으로 처리되어 무시됩니다.
+
 ## 단일 노드 학습
 
 ### 실행 방법
 
 ```bash
-# 단일 노드 스크립트 실행
+# 단일 노드 스크립트 실행 (기본: qwen3-0.6b 프리셋)
 ./train-fsdp2-singlenode.sh
 
 # 특정 노드에서 실행
@@ -144,36 +218,31 @@ for param in model.parameters():
 ### 주요 설정
 
 ```bash
-# 모델 설정 (Qwen3-0.6B)
-MODEL_TYPE="qwen3_0_6b"
-TOKENIZER="Qwen/Qwen3-0.6B"
+# 프리셋 선택 (모델 아키텍처 파라미터 자동 적용)
+PRESET="qwen3-0.6b"   # 또는 "llama-3.1-8b"
 
 # 학습 설정
 MAX_STEPS=100
 CHECKPOINT_FREQ=50
 TRAIN_BATCH_SIZE=1
 VAL_BATCH_SIZE=1
-
-# 모델 아키텍처 (config.json에서 가져온 정확한 값)
-MAX_CONTEXT_WIDTH=8192
-NUM_KEY_VALUE_HEADS=8
-INTERMEDIATE_SIZE=3072
-HIDDEN_WIDTH=1024
-NUM_LAYERS=28
-NUM_HEADS=16
 ```
 
 ## 멀티노드 분산 학습
 
-### 로컬 환경 실행
+### sbatch 스크립트 목록
+
+| 스크립트 | 모델 | 노드 수 |
+|---|---|---|
+| `train-fsdp2.sbatch` | Qwen3-0.6B | 2 |
+| `train-pyxis.sbatch` | Qwen3-0.6B (컨테이너) | 2 |
+
+### 실행 방법
 
 ```bash
 sbatch train-fsdp2.sbatch
-```
 
-### Pyxis+Enroot 컨테이너 실행
-
-```bash
+# Pyxis+Enroot 컨테이너
 sbatch train-pyxis.sbatch
 ```
 
@@ -187,33 +256,6 @@ sbatch train-pyxis.sbatch
 #SBATCH --exclusive            # 전용 노드 사용
 #SBATCH --output=logs/%x_%j.out  # 로그 파일 경로
 #SBATCH --error=logs/%x_%j.err   # 에러 로그 경로
-```
-
-#### 학습 파라미터 (Qwen3-0.6B)
-
-```bash
-# 모델 설정
-MODEL_TYPE="qwen3_0_6b"
-TOKENIZER="Qwen/Qwen3-0.6B"
-
-# 데이터셋 설정
-DATASET="/fsx/data/wikitext-2"
-LOCAL_DATASET=true
-
-# 학습 설정
-MAX_STEPS=100
-EPOCHS=1
-LOGGING_FREQ=10
-VALIDATION_FREQ=100
-CHECKPOINT_FREQ=50
-
-# 모델 아키텍처 (Qwen3-0.6B config.json 기준)
-MAX_CONTEXT_WIDTH=8192
-NUM_KEY_VALUE_HEADS=8
-INTERMEDIATE_SIZE=3072
-HIDDEN_WIDTH=1024
-NUM_LAYERS=28
-NUM_HEADS=16
 ```
 
 ## FSDP2 체크포인트 관리
@@ -320,50 +362,6 @@ cpu_offload = CPUOffloadPolicy()
 for module in model.modules():
     if hasattr(module, 'self_attn'):
         fully_shard(module, offload_policy=cpu_offload)
-```
-
-## 모델 크기별 권장 설정
-
-### 소형 모델 (< 1B) - Qwen3-0.6B
-
-```bash
-# 설정
-NODES=1
-GPUS_PER_NODE=1-4
-TRAIN_BATCH_SIZE=2-4
-MAX_CONTEXT_WIDTH=8192
-
-# FSDP2 설정
-# 기본 설정으로 충분 (자동 최적화)
-```
-
-### 중형 모델 (1B - 10B)
-
-```bash
-# 설정
-NODES=1-2
-GPUS_PER_NODE=4-8
-TRAIN_BATCH_SIZE=1-2
-MAX_CONTEXT_WIDTH=4096-8192
-
-# FSDP2 설정
-# Mixed precision 활용
-# CPU offload 고려 (필요시)
-```
-
-### 대형 모델 (10B - 70B)
-
-```bash
-# 설정
-NODES=2-8
-GPUS_PER_NODE=8
-TRAIN_BATCH_SIZE=1
-MAX_CONTEXT_WIDTH=2048-4096
-
-# FSDP2 설정
-# Mixed precision 필수
-# CPU offload 활용
-# Explicit prefetching 고려
 ```
 
 ## 학습 모니터링
@@ -519,7 +517,6 @@ fully_shard(model)
 - **DTensor 문서**: https://pytorch.org/docs/stable/distributed.tensor.html
 - **DCP 문서**: https://pytorch.org/docs/stable/distributed.checkpoint.html
 - **AWS HyperPod 문서**: https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod.html
-- **Qwen3 모델 카드**: https://huggingface.co/Qwen/Qwen3-0.6B
 
 ## 참고사항
 
@@ -528,70 +525,6 @@ fully_shard(model)
 - 체크포인트는 DCP API를 사용하여 더 효율적으로 처리됩니다
 - 모델별 체크포인트 관리로 여러 모델 실험이 용이합니다
 - HyperPod의 자동 재시작과 완벽하게 호환됩니다
-
-## 예제 워크플로우
-
-### 1. 환경 설정
-
-```bash
-# 작업 디렉토리 생성
-mkdir -p ~/fsdp2-training
-cd ~/fsdp2-training
-
-# UV 환경 설정
-uv init
-uv add torch>=2.1 transformers datasets
-
-# 로그 및 체크포인트 디렉토리 생성
-mkdir -p logs checkpoints
-```
-
-### 2. 단일 노드 테스트
-
-```bash
-# 실행 권한 부여
-chmod +x train-fsdp2-singlenode.sh
-
-# 단일 노드 학습 실행
-./train-fsdp2-singlenode.sh
-
-# 로그 확인
-tail -f logs/*.out
-```
-
-### 3. 멀티노드 학습
-
-```bash
-# 멀티노드 학습 제출
-sbatch fsdp-train2.sbatch
-
-# 작업 상태 확인
-squeue -u $USER
-
-# 실시간 로그 확인
-tail -f logs/qwen3_0_6b-FSDP2_*.out
-```
-
-### 4. 체크포인트 관리
-
-```bash
-# 체크포인트 확인
-ls -lh checkpoints/
-cat checkpoints/qwen3_0_6b-latest
-
-# 특정 체크포인트에서 재개
-# (스크립트가 자동으로 latest 체크포인트 감지)
-```
-
-### 5. 성능 분석
-
-```bash
-# 학습 완료 후 성능 메트릭 확인
-grep -E "samples/sec|Loss" logs/qwen3_0_6b-FSDP2_*.out
-
-# 체크포인트 저장 시간 확인
-grep -E "Saving|Saved" logs/qwen3_0_6b-FSDP2_*.out
-```
 
 ## 라이센스
 

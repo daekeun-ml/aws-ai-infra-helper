@@ -1,0 +1,20 @@
+{
+    "_description": "Qwen3-0.6B benchmark preset — bf16-mixed, seq=4096, single-node throughput measurement",
+    "_parallelism": "FSDP=8 (all GPUs on 1 node)",
+    "_effective_batch": "GBS = batch_size(4) × world_size(8) = 32 sequences per step",
+
+    "model_name": "Qwen/Qwen3-0.6B",
+
+    "dataset": "/fsx/data/pretrain/wikitext-2",
+    "local_dataset": true,
+
+    "precision": "bf16-mixed",
+    "batch_size": 4,
+    "max_length": 4096,
+    "learning_rate": 1e-4,
+    "max_steps": 100,
+
+    "save_every_n_steps": 100,
+    "val_check_interval": 100,
+    "checkpoint_dir": "./checkpoints/qwen3-0.6b-bench"
+}

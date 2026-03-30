@@ -151,68 +151,88 @@ def train(
     start_batch_index=0
 ):
     model.train()
-    
+    ga_steps = getattr(args, 'gradient_accumulation_steps', 1)
+
     if global_rank == 0 and start_batch_index > 0:
         logger.info(f"Starting training from step {total_steps}, skipping to batch {start_batch_index + 1}")
-    
+    if global_rank == 0:
+        logger.info(f"Gradient accumulation steps: {ga_steps}")
+
+    optimizer.zero_grad()
+    accum_loss = 0.0
+    step_start = time.time()
+
     for epoch in range(args.epochs):
         for batch_idx, input_data in enumerate(train_dataloader):
             if batch_idx <= start_batch_index:
                 continue
-                
-            step_start = time.time()
-            
+
             # Move data to device
             input_data = input_data.to(model.device)
-            
-            # Forward pass
+
+            # Forward pass — scale loss for accumulation
             outputs = model(input_ids=input_data, attention_mask=None, labels=input_data)
-            loss = outputs.loss
-            
-            # Backward pass
-            optimizer.zero_grad()
+            loss = outputs.loss / ga_steps
             loss.backward()
-            optimizer.step()
-            lr_scheduler.step()
-            
-            total_steps += 1
-            step_time = time.time() - step_start
-            sample_processed = input_data.shape[0] * world_size
-            throughput = sample_processed / step_time
-            loss_scalar = loss.item()
-            current_lr = optimizer.param_groups[0]['lr']
-            
-            if global_rank == 0 and batch_idx % args.logging_freq == 0:
-                logger.info(
-                    "Batch %d Loss: %.5f, Speed: %.2f samples/sec, lr: %.6f",
-                    batch_idx,
-                    loss_scalar,
-                    throughput,
-                    current_lr,
-                )
-            
-            if args.validation_freq and not total_steps % args.validation_freq:
-                val_loss, val_ppl = eval_model(
-                    model, val_dataloader, args.validation_batches
-                )
-                model.train()
-                if global_rank == 0:
+            accum_loss += loss.item()
+
+            # Optimizer step every ga_steps micro-batches
+            if (batch_idx + 1) % ga_steps == 0:
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+
+                total_steps += 1
+                step_time = time.time() - step_start
+                step_start = time.time()
+
+                seq_len = input_data.shape[1]
+                samples_per_step = input_data.shape[0] * ga_steps * world_size
+                tokens_per_step = samples_per_step * seq_len
+                samples_per_sec = samples_per_step / step_time
+                tps = tokens_per_step / step_time
+                # 6 * N * T for standard training, 8 * N * T with activation checkpointing
+                flops_multiplier = 8 if getattr(args, 'activation_checkpointing', 0) else 6
+                tflops = flops_multiplier * num_params * tps / 1e12
+                current_lr = optimizer.param_groups[0]['lr']
+
+                if global_rank == 0 and total_steps % args.logging_freq == 0:
                     logger.info(
-                        "Batch %d Validation loss: %s",
+                        "Step %d (batch %d) | Loss: %.5f | lr: %.2e | "
+                        "Samples/sec: %.2f | TPS: %.0f | TFLOPs: %.2f",
+                        total_steps,
                         batch_idx,
-                        val_loss,
+                        accum_loss,
+                        current_lr,
+                        samples_per_sec,
+                        tps,
+                        tflops,
                     )
-            
-            if args.checkpoint_dir and not total_steps % args.checkpoint_freq:
-                sub_dir = f"{args.model_type}-{total_steps}steps"
-                if global_rank == 0:
-                    logger.info(f"Triggering checkpoint save at step {total_steps}")
-                save_checkpoint(model, optimizer, lr_scheduler, total_steps, batch_idx + 1, args.checkpoint_dir, sub_dir)
-                
-            if total_steps >= args.max_steps:
-                if global_rank == 0:
-                    logger.info(f"Training completed! Reached max_steps={args.max_steps}")
-                break
+                accum_loss = 0.0
+
+                if args.validation_freq and not total_steps % args.validation_freq:
+                    val_loss, val_ppl = eval_model(
+                        model, val_dataloader, args.validation_batches
+                    )
+                    model.train()
+                    if global_rank == 0:
+                        logger.info(
+                            "Step %d Validation loss: %.5f | ppl: %.2f",
+                            total_steps,
+                            val_loss,
+                            val_ppl,
+                        )
+
+                if args.checkpoint_dir and not total_steps % args.checkpoint_freq:
+                    sub_dir = f"{args.model_type}-{total_steps}steps"
+                    if global_rank == 0:
+                        logger.info(f"Triggering checkpoint save at step {total_steps}")
+                    save_checkpoint(model, optimizer, lr_scheduler, total_steps, batch_idx + 1, args.checkpoint_dir, sub_dir)
+
+                if total_steps >= args.max_steps:
+                    if global_rank == 0:
+                        logger.info(f"Training completed! Reached max_steps={args.max_steps}")
+                    return
 
 
 def main(args):
@@ -227,13 +247,23 @@ def main(args):
     
     # Use bfloat16 for mixed precision
     dtype = torch.bfloat16
-    
+
     if global_rank == 0:
         logger.info("Creating Model with FSDP2")
-    
-    # Create model directly on device
+
+    # FP8 requires bf16 base model; load then convert
     model = AutoModelForCausalLM.from_pretrained(args.tokenizer, dtype=dtype)
     model = model.to(device)
+
+    if getattr(args, 'fp8', 0):
+        try:
+            from torchao.float8 import convert_to_float8_training
+            model = convert_to_float8_training(model)
+            if global_rank == 0:
+                logger.info("FP8 current-scaling enabled via torchao")
+        except ImportError:
+            if global_rank == 0:
+                logger.warning("torchao not found — FP8 disabled. Install torchao to enable FP8.")
     
     # Apply fully_shard to transformer layers
     for module in model.modules():

@@ -18,7 +18,7 @@ set -ex
 mkdir -p logs
 
 # CUDA Version Setup
-CUDA_VERSION=${CUDA_VERSION:-"12.8"}
+CUDA_VERSION=${CUDA_VERSION:-"12.9"}
 if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
     export CUDA_HOME="/usr/local/cuda-${CUDA_VERSION}"
     export PATH="$CUDA_HOME/bin:$PATH"
