@@ -1,17 +1,29 @@
 [project]
 name = "aws-ai-infra-helper"
-version = "1.0.9"
+version = "1.1.0"
 description = "AWS AI Infra helper for SageMaker HyperPod and ParallelCluster"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "datasets>=4.4.2",
-    "deepspeed>=0.18.3",
-    "lightning>=2.6.0",
-    "setuptools>=80.9.0",
-    "torch==2.9.1",
-    "torchaudio==2.9.1",
-    "torchvision==0.24.1",
-    "transformers==4.57.3",
-    "lightning>=2.6.0"
+    "datasets>=4.8.4",
+    "deepspeed>=0.18.8",
+    "lightning>=2.6.1",
+    "setuptools==81.0.0",
+    "torch==2.11.0",
+    "torchaudio==2.11.0",
+    "torchvision==0.26.0",
+    "transformers==5.3.0",
+    "lightning>=2.6.1",
+    "torchdata==0.11.0",
+    "tensorboard>=2.20.0",
+    "wandb>=0.25.1",
+    "fsspec>=2026.2.0",
+    "tyro>=1.0.11",
+    "tokenizers>=0.22.2",
+    "safetensors>=0.7.0",
+    "einops>=0.8.2",
+    "pillow>=12.1.1",
+    "torchao>=0.16.0",
+    "flash-linear-attention>=0.4.2",
+    "transformer-engine>=2.13.0"
 ]

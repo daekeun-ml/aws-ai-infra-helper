@@ -2,12 +2,42 @@
 # SPDX-License-Identifier: MIT-0
 
 import argparse
+import json
 import os
+
+
+def _load_preset(preset_name):
+    """Load a model preset from src/presets/<name>.json."""
+    preset_dir = os.path.join(os.path.dirname(__file__), "..", "presets")
+    preset_file = os.path.join(preset_dir, f"{preset_name}.json")
+    if not os.path.exists(preset_file):
+        available = [
+            f[:-5] for f in os.listdir(preset_dir) if f.endswith(".json")
+        ]
+        raise ValueError(
+            f"Preset '{preset_name}' not found. Available presets: {available}"
+        )
+    with open(preset_file) as f:
+        data = json.load(f)
+    # Strip comment-only keys (prefixed with "_")
+    return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
 def parse_args():  # pylint: disable=too-many-statements
     """Parse args."""
+    # Pre-parse --preset so we can set parser defaults before full parsing.
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--preset", type=str, default=None)
+    pre_args, _ = pre_parser.parse_known_args()
+
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--preset",
+        type=str,
+        default=None,
+        help="Name of a model preset to load from src/presets/ (e.g. llama-3.1-8b, qwen3-0.6b). "
+             "Individual args override preset values.",
+    )
 
     # hyperparameters sent by the client are passed as command-line arguments to the script.
 
@@ -51,6 +81,18 @@ def parse_args():  # pylint: disable=too-many-statements
         type=int,
         default=1,
         help="enable gradient checkpointing to reduce memory consumption",
+    )
+    opt_grp.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=1,
+        help="number of gradient accumulation steps (GA)",
+    )
+    opt_grp.add_argument(
+        "--fp8",
+        type=int,
+        default=0,
+        help="enable FP8 training via torchao (1=fp8-current-scaling)",
     )
     opt_grp.add_argument(
         "--intermediate_size",
@@ -191,5 +233,10 @@ def parse_args():  # pylint: disable=too-many-statements
         default=10,
         help="number of batches to estimate validation loss",
     )
+
+    # Apply preset defaults (before final parse so CLI args still win)
+    if pre_args.preset:
+        preset = _load_preset(pre_args.preset)
+        parser.set_defaults(**preset)
 
     return parser.parse_known_args()

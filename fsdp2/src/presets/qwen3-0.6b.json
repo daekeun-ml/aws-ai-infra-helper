@@ -1,0 +1,19 @@
+{
+    "_description": "Qwen3-0.6B preset — https://huggingface.co/Qwen/Qwen3-0.6B/blob/main/config.json",
+    "model_type": "qwen3_0_6b",
+    "tokenizer": "Qwen/Qwen3-0.6B",
+
+    "hidden_width": 1024,
+    "num_layers": 28,
+    "num_heads": 16,
+    "num_key_value_heads": 8,
+    "intermediate_size": 3072,
+    "max_context_width": 8192,
+    "vocab_size": 151936,
+    "rotary_emb_base": 1000000,
+
+    "train_batch_size": 1,
+    "val_batch_size": 1,
+    "lr": 0.0001,
+    "max_steps": 5000
+}

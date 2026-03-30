@@ -3,11 +3,16 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
-### v1.0.9
-- **Workshop Studio 지원 강화**: Worksho Studio의 저샤앙 GPU 리소스(예: `ml.g5.2xlarge`)에서도 핸즈온 가능하도록 개선 
+### v1.0.10
+- **전반적인 코드 리팩토링**: FSDP2, Lightning 학습 스크립트 및 인자 처리 코드 정리
+- **TorchTitan 가이드 대폭 변경**: 새로운 디렉토리 구조로 재편, 벤치마크/스크립트/멀티노드 학습 파일 추가
+- **Lightning 학습 지표 개선**: TPS(Tokens Per Second) 및 TFLOPs/s 실시간 모니터링 추가 (train.py, train_fabric.py)
 
 <details>
 <summary>클릭하여 전체 업데이트 내역 보기</summary>
+
+### v1.0.9
+- **Workshop Studio 지원 강화**: Workshop Studio의 저사양 GPU 리소스(예: `ml.g5.2xlarge`)에서도 핸즈온 가능하도록 개선
 
 ### v1.0.8
 - **HyperPod EKS Training 핸즈온 추가**: EKS 기반 분산 학습 클러스터 설정 및 운영 가이드
@@ -130,8 +135,13 @@ aws-ai-infra-helper/
 │   └── megatron-lm-eks-guide-ko.md    # EKS 가이드
 │
 ├── torchtitan/           # TorchTitan 예제
-│   ├── torchtitan-guide-ko.md    # TorchTitan 한국어 가이드
-│   └── torchtitan-multinode.sbatch  # 멀티노드 학습 스크립트
+│   ├── README.md                 # TorchTitan 한국어 가이드
+│   ├── train.sbatch              # 멀티노드 학습 Slurm 스크립트
+│   ├── multinode_trainer.slurm   # 멀티노드 트레이너 Slurm 스크립트
+│   ├── run_train.sh              # 학습 실행 쉘 스크립트
+│   ├── benchmarks/               # 벤치마크 설정 및 스크립트
+│   ├── scripts/                  # 유틸리티 스크립트
+│   └── torchtitan/               # TorchTitan 소스 코드
 │
 ├── observability/        # 모니터링 및 관찰성 도구
 │   ├── install_observability.py  # 통합 설치 스크립트
@@ -260,7 +270,25 @@ sudo ./scripts/install-pyxis-enroot.sh
 
 ### 4. 로컬 데이터셋 준비 (선택사항)
 
-HyperPod 클러스터에서 로컬 데이터셋을 사용하려면:
+HyperPod 클러스터에서 로컬 데이터셋을 사용하려면 두 가지 방법 중 선택할 수 있습니다.
+
+#### 방법 A: FSx Lustre DRA 없이 직접 다운로드 (테스트용 권장)
+
+S3 동기화나 DRA 설정 없이 `/fsx/data/` 에 바로 다운로드합니다:
+
+```bash
+# 데이터셋을 /fsx/data/pretrain/ 또는 /fsx/data/sft/ 에 직접 저장
+python3 prepare-datasets.py --local-only
+
+# 저장 경로를 변경하려면 (기본값: /fsx/data)
+python3 prepare-datasets.py --local-only --local-base-dir /fsx/data
+```
+
+다운로드가 완료되면 다음 경로에서 데이터셋을 바로 사용할 수 있습니다:
+- Pre-training: `/fsx/data/pretrain/<dataset-name>/`
+- SFT: `/fsx/data/sft/<dataset-name>/`
+
+#### 방법 B: S3 및 FSx Lustre DRA를 통한 동기화 (프로덕션 권장)
 
 ```bash
 # 1. 스택 정보 추출 및 환경변수 설정
@@ -301,9 +329,9 @@ PyTorch Lightning과 Lightning Fabric을 활용한 이중 프레임워크 지원
 **주요 특징:**
 - PyTorch Lightning: 자동화된 학습 루프, 콜백, 로깅
 - Lightning Fabric: 커스텀 학습 루프, 세밀한 제어
-- FSDP 분산 학습 및 Mixed Precision 지원
+- FSDP 분산 학습 및 BF16 Mixed Precision 지원
 - 스마트 체크포인트 관리 (자동 재시작, 완료 감지)
-- 향상된 모니터링 (Loss, Grad Norm, LR, 처리량)
+- 향상된 모니터링 (Loss, Grad Norm, LR, TPS, TFLOPs/s)
 
 **시작하기:**
 ```bash
@@ -426,27 +454,35 @@ sbatch 2.distributed-training.sbatch
 
 ### TorchTitan
 
-Meta(PyTorch 팀)에서 개발한 최신 대규모 모델 학습 플랫폼입니다.
+Meta(PyTorch 팀)에서 개발한 PyTorch 네이티브 대규모 언어 모델 사전 학습 플랫폼입니다.
 
 **주요 특징:**
-- FSDP2 (Fully Sharded Data Parallel v2)
-- Tensor/Pipeline/Context Parallel
+- FSDP2, Tensor/Pipeline/Context Parallel 등 PyTorch 내장 분산 학습 기능 활용
+- 다양한 모델 지원: Llama 3/4, Qwen3, DeepSeek-V3, GPT, Flux 등
 - Float8 양자화 및 torch.compile 통합
 - Zero-bubble Pipeline Parallel
-- TensorBoard 및 Weights & Biases 통합
+- GRPO 강화학습, 비전-언어 모델(VLM) 등 실험적 기능 포함
+- AWS EFA 최적화 설정 내장
 
 **시작하기:**
 ```bash
 cd torchtitan
 
-# 멀티노드 학습
-sbatch torchtitan-multinode.sbatch
+# 로컬 단일 노드 학습 (기본: llama3 debugmodel, 8 GPU)
+./run_train.sh
 
-# 커스텀 설정 파일 사용
-CONFIG_FILE="./custom_config.toml" sbatch torchtitan-multinode.sbatch
+# 모델/설정 지정
+MODULE=llama3 CONFIG=llama3_8b ./run_train.sh
+
+# GPU 없이 설정 유효성 검증 (dry-run)
+NGPU=32 COMM_MODE="fake_backend" MODULE=llama3 CONFIG=llama3_70b ./run_train.sh
+
+# 멀티노드 학습 (Slurm)
+sbatch --nodes=1 train.sbatch
+sbatch multinode_trainer.slurm
 ```
 
-**상세 가이드:** [torchtitan/torchtitan-guide-ko.md](torchtitan/torchtitan-guide-ko.md)
+**상세 가이드:** [torchtitan/README.md](torchtitan/README.md)
 
 ## 유틸리티 스크립트
 

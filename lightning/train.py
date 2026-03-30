@@ -10,7 +10,7 @@ import os
 import sys
 import warnings
 import glob
-
+import time
 
 
 # Add fsdp src to path to reuse utilities
@@ -22,7 +22,12 @@ class LanguageModelLightningModule(pl.LightningModule):
         super().__init__()
         self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.learning_rate = learning_rate
-        
+        self._num_params = sum(p.numel() for p in self.model.parameters())
+        self._step_start_time = None
+
+    def on_train_batch_start(self, batch, batch_idx):
+        self._step_start_time = time.perf_counter()
+
     def training_step(self, batch, batch_idx):
         self.model.train()  # Ensure model is in training mode
         input_ids = batch
@@ -31,6 +36,21 @@ class LanguageModelLightningModule(pl.LightningModule):
         loss = outputs.loss
         self.log('train_loss', loss, prog_bar=True, sync_dist=True)
         return loss
+
+    def on_train_batch_end(self, outputs, batch, batch_idx):
+        if self._step_start_time is None:
+            return
+        elapsed = time.perf_counter() - self._step_start_time
+        if elapsed <= 0:
+            return
+        batch_size, seq_len = batch.shape[0], batch.shape[1]
+        world_size = self.trainer.world_size
+        tokens = batch_size * seq_len * world_size
+        tps = tokens / elapsed
+        # 6 * params * tokens: standard forward+backward FLOPs approximation
+        tflops = 6 * self._num_params * tokens / elapsed / 1e12
+        self.log('tps', tps, prog_bar=True, sync_dist=False)
+        self.log('tflops', tflops, prog_bar=True, sync_dist=False)
     
     def validation_step(self, batch, batch_idx):
         self.model.eval()
@@ -198,7 +218,7 @@ def main():
         devices=args.gpus,
         num_nodes=args.nodes,
         strategy=strategy,  # Use FSDP strategy
-        precision='16-mixed',
+        precision='bf16-mixed',
         log_every_n_steps=10,
         val_check_interval=args.val_check_interval,
         limit_val_batches=10,  # Fixed number of validation batches

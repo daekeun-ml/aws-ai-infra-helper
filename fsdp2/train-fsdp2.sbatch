@@ -3,7 +3,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-#SBATCH --nodes=2 # number of nodes to use
+#SBATCH --nodes=1 # number of nodes to use
 #SBATCH --job-name=qwen3_0_6b-FSDP2 # name of your job
 #SBATCH --output=logs/%x_%j.out # logfile for stdout
 #SBATCH --error=logs/%x_%j.err # logfile for stderr, remove it to merge both outputs
@@ -12,7 +12,7 @@
 set -ex;
 
 # CUDA Version Setup
-CUDA_VERSION=${CUDA_VERSION:-"12.8"}  # Default to 12.8
+CUDA_VERSION=${CUDA_VERSION:-"12.9"}  # Default to 12.9
 if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
     export CUDA_HOME="/usr/local/cuda-${CUDA_VERSION}"
     export PATH="$CUDA_HOME/bin:$PATH"
@@ -139,12 +139,10 @@ else
 fi
 
 ############################
-# qwen3_0_6b FSDP2 Training Params ##
+# qwen3_0_6b FSDP2 Training Params
+# Model arch params come from --preset qwen3-0.6b
+# Override individual values here as needed
 ############################
-
-# Training Configuration
-MODEL_TYPE="qwen3_0_6b"
-TOKENIZER="Qwen/Qwen3-0.6B"
 
 DATASET="/fsx/data/pretrain/wikitext-2"
 LOCAL_DATASET=true  # Set to false for HuggingFace datasets
@@ -161,21 +159,11 @@ VALIDATION_BATCHES=5
 CHECKPOINT_FREQ=50
 CHECKPOINT_DIR="./checkpoints"
 
-# Model configuration (from Qwen3-0.6B config.json)
-MAX_CONTEXT_WIDTH=8192
-NUM_KEY_VALUE_HEADS=8
-INTERMEDIATE_SIZE=3072
-HIDDEN_WIDTH=1024
-NUM_LAYERS=28
-NUM_HEADS=16
-
-# Batch sizes
 TRAIN_BATCH_SIZE=1
 VAL_BATCH_SIZE=1
 
 declare -a TRAINING_ARGS=(
-    --model_type=$MODEL_TYPE
-    --tokenizer=$TOKENIZER
+    --preset=qwen3-0.6b
     --dataset=$DATASET
     $([ "$LOCAL_DATASET" = true ] && echo "--local_dataset")
     $([ "$LOCAL_DATASET" = false ] && echo "--dataset_config_name $DATASET_CONFIG_NAME")
@@ -186,12 +174,6 @@ declare -a TRAINING_ARGS=(
     --validation_batches=$VALIDATION_BATCHES
     --checkpoint_freq=$CHECKPOINT_FREQ
     --checkpoint_dir=$CHECKPOINT_DIR
-    --max_context_width=$MAX_CONTEXT_WIDTH
-    --num_key_value_heads=$NUM_KEY_VALUE_HEADS
-    --intermediate_size=$INTERMEDIATE_SIZE
-    --hidden_width=$HIDDEN_WIDTH
-    --num_layers=$NUM_LAYERS
-    --num_heads=$NUM_HEADS
     --train_batch_size=$TRAIN_BATCH_SIZE
     --val_batch_size=$VAL_BATCH_SIZE
     --resume_from_checkpoint=$CHECKPOINT_DIR
