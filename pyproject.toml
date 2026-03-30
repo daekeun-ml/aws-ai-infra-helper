@@ -25,5 +25,6 @@ dependencies = [
     "pillow>=12.1.1",
     "torchao>=0.16.0",
     "flash-linear-attention>=0.4.2",
-    "transformer-engine>=2.13.0"
+    "transformer-engine>=2.13.0",
+    "torchtitan>=0.2.2",
 ]

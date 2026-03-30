@@ -38,6 +38,9 @@ export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 ## Set HuggingFace metadata timeout (in seconds) for large clusters
 export HF_HUB_ETAG_TIMEOUT=60
 
+# Activate virtual environment
+source ../.venv/bin/activate
+
 export LD_LIBRARY_PATH=/opt/amazon/efa/lib:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/lib/:$LD_LIBRARY_PATH
 export CUDA_LAUNCH_BLOCKING=0

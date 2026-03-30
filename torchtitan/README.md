@@ -2,6 +2,8 @@
 
 [torchtitan](https://github.com/pytorch/torchtitan)은 Meta/PyTorch 팀이 개발한 PyTorch 네이티브 대규모 언어 모델 사전 학습 플랫폼입니다. 이 디렉토리는 AWS 환경(EC2, HyperPod)에서 torchtitan을 실행하는 방법을 다룹니다.
 
+torchtitan에서 공식으로 지원하지 않는 Qwen-3-MoE, Qwen-3.5-MoE 모델의 학습도 가능하게 수정했습니다.
+
 ## 개요
 
 torchtitan은 다음 특징을 가집니다:
@@ -34,7 +36,7 @@ torchtitan은 다음 특징을 가집니다:
 
 ## Getting Started
 
-### 환경 요구사항
+### 환경 요구사항 (uv sync로 의존성 패키지는 모두 설치됩니다.)
 
 - Python 3.10+
 - PyTorch 2.x (`torch==2.11.0` 이상 권장)
@@ -44,23 +46,77 @@ torchtitan은 다음 특징을 가집니다:
 ### 설치
 
 ```bash
-# torchtitan 패키지 설치 (pip)
-pip install torchtitan
+# 의존성 설치 (uv 사용)
+uv sync
 ```
 
 ### 토크나이저 준비
 
-Llama3 계열 모델의 경우 HuggingFace에서 토크나이저를 다운로드해야 합니다:
+각 모델의 토크나이저는 HuggingFace에서 다운로드해야 합니다. `--local_dir` 기본값은 `assets/hf/`이며, repo_id의 모델명으로 하위 디렉토리가 자동 생성됩니다.
+
+**Llama3 계열** (`meta-llama` 접근 권한 필요)
 
 ```bash
-# Llama 3.1 8B 토크나이저/체크포인트 다운로드
-python scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-8B --save_dir ./assets/hf/Llama-3.1-8B
+# Llama 3.1 8B (llama3_8b, llama3_8b_* 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-8B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
 
-# config_registry의 hf_assets_path와 경로가 일치해야 함
-# llama3_8b config는 ./assets/hf/Llama-3.1-8B 참조
+# Llama 3.1 70B (llama3_70b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-70B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
+
+# Llama 3.1 405B (llama3_405b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-405B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
 ```
 
-`debugmodel` 설정은 별도 다운로드 없이 `./tests/assets/tokenizer`를 사용하므로 즉시 실행 가능합니다.
+**Llama4 계열** (`meta-llama` 접근 권한 필요)
+
+```bash
+# Llama 4 Maverick 17B 128E (llama4_17bx128e 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-4-Maverick-17B-128E --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
+
+# Llama 4 Scout 17B 16E (llama4_17bx16e 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-4-Scout-17B-16E --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
+```
+
+**Qwen3 계열** (공개 모델, `--hf_token` 불필요)
+
+```bash
+# Qwen3 0.6B (qwen3_0_6b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-0.6B --assets tokenizer
+
+# Qwen3 1.7B (qwen3_1_7b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-1.7B --assets tokenizer
+
+# Qwen3 14B (qwen3_14b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-14B --assets tokenizer
+
+# Qwen3 32B (qwen3_32b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-32B --assets tokenizer
+
+# Qwen3 30B-A3B (qwen3_30b_a3b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-30B-A3B --assets tokenizer
+
+# Qwen3 235B-A22B (qwen3_235b_a22b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-235B-A22B --assets tokenizer
+```
+
+**Qwen3.5 MoE 계열** (공개 모델, `--hf_token` 불필요)
+
+```bash
+# Qwen3.5 35B-A3B (qwen3_5_moe 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3.5-35B-A3B --assets tokenizer
+```
+
+**DeepSeek-V3 계열** (공개 모델, `--hf_token` 불필요)
+
+```bash
+# DeepSeek MoE 16B (deepseek_v3_16b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id deepseek-ai/deepseek-moe-16b-base --assets tokenizer
+
+# DeepSeek-V3.1 Base (deepseek_v3_671b 설정에서 사용)
+python3 scripts/download_hf_assets.py --repo_id deepseek-ai/DeepSeek-V3.1-Base --assets tokenizer
+```
+
+> `debugmodel` 설정은 별도 다운로드 없이 `./tests/assets/tokenizer`를 사용하므로 즉시 실행 가능합니다.
 
 ## run_train.sh 사용법
 
