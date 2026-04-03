@@ -58,7 +58,7 @@ uv sync
 
 ```bash
 # Llama 3.1 8B (llama3_8b, llama3_8b_* 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-8B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
+uv run scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-8B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
 
 # Llama 3.1 70B (llama3_70b 설정에서 사용)
 python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-70B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]

@@ -13,7 +13,7 @@
 set -ex;
 
 # CUDA Version Setup
-CUDA_VERSION=${CUDA_VERSION:-"12.8"}  # Default to 12.8
+CUDA_VERSION=${CUDA_VERSION:-"13.0"} 
 if [ -d "/usr/local/cuda-${CUDA_VERSION}" ]; then
     export CUDA_HOME="/usr/local/cuda-${CUDA_VERSION}"
     export PATH="$CUDA_HOME/bin:$PATH"
@@ -91,10 +91,11 @@ export NCCL_DEBUG=INFO
 ## Reduces memory synchronizations
 ## https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__UNIFIED.html
 #export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
-# LD_PRELOAD is required for PyTorch to find the NCCL library
-# This path assumes you are using the Deep Learning AMI
-# If you are not using the DLAMI, you may need to update this path
-export LD_PRELOAD=/usr/local/cuda-${CUDA_VERSION}/lib/libnccl.so
+# LD_PRELOAD for system NCCL - disabled because PyTorch 2.9+ bundles its own NCCL.
+# Preloading a system NCCL that predates the bundled version causes symbol errors
+# (e.g. undefined symbol: ncclDevCommDestroy). Re-enable only if you need to
+# override with a newer system NCCL that matches the PyTorch build.
+# export LD_PRELOAD=/usr/local/cuda-${CUDA_VERSION}/lib/libnccl.so
 export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
 ## Set HuggingFace metadata timeout (in seconds) for large clusters

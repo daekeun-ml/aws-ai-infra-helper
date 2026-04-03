@@ -58,9 +58,6 @@ export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 # CUDA 동기화 최적화
 export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 
-# NCCL 라이브러리 경로 (CUDA 버전에 맞게 조정)
-export LD_PRELOAD=/usr/local/cuda-12.8/lib/libnccl.so
-
 # HuggingFace 타임아웃 (대규모 클러스터)
 export HF_HUB_ETAG_TIMEOUT=60
 ```
@@ -475,24 +472,6 @@ export PYTHONFAULTHANDLER=1
 export TORCH_SHOW_CPP_STACKTRACES=1
 ```
 
-### 프로파일링
-
-```python
-from torch.profiler import profile, ProfilerActivity
-
-with profile(
-    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-    record_shapes=True,
-    profile_memory=True,
-    with_stack=True,
-) as prof:
-    # 학습 코드
-    pass
-
-# 결과 저장
-prof.export_chrome_trace("trace.json")
-```
-
 ## 추가 리소스
 
 - **PyTorch FSDP 문서**: https://pytorch.org/docs/stable/fsdp.html
@@ -508,41 +487,6 @@ prof.export_chrome_trace("trace.json")
 - HyperPod의 자동 재시작 기능을 활용하면 장시간 학습의 안정성이 크게 향상됩니다
 - 대규모 학습 시 체크포인트 저장 주기를 적절히 설정하여 복구 시간을 최소화하세요
 - EFA를 통한 멀티노드 통신은 InfiniBand와 유사한 성능을 제공합니다
-
-## 예제 워크플로우
-
-### 1. 환경 설정
-
-```bash
-# 가상환경 생성 (UV 사용)
-uv sync
-```
-
-### 2. 단일 GPU 테스트
-
-```bash
-# 로그 디렉토리 생성
-mkdir -p logs
-
-# 단일 GPU 학습 제출
-sbatch train-fsdp-singlegpu.sbatch
-
-# 로그 확인
-tail -f logs/llama3_2_1b-FSDP_*.out
-```
-
-### 3. 멀티노드 학습
-
-```bash
-# 멀티노드 학습 제출
-sbatch train-fsdp.sbatch
-
-# 작업 상태 확인
-squeue -u $USER
-
-# 로그 확인
-tail -f logs/llama3_2_1b-FSDP_*.out
-```
 
 ## 라이센스
 

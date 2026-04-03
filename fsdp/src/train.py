@@ -275,17 +275,19 @@ def main(args):
         total_steps = 0
         start_batch_index = 0
     
-    train_dataloader = create_streaming_dataloader(args.dataset, 
-                                                   args.tokenizer, 
-                                                   name=args.dataset_config_name, 
-                                                   batch_size=args.train_batch_size, 
+    train_dataloader = create_streaming_dataloader(args.dataset,
+                                                   args.tokenizer,
+                                                   name=args.dataset_config_name,
+                                                   global_rank=global_rank,
+                                                   batch_size=args.train_batch_size,
                                                    split='train',
                                                    local_dataset=args.local_dataset)
-    
-    val_dataloader = create_streaming_dataloader(args.dataset, 
-                                                  args.tokenizer, 
-                                                  name=args.dataset_config_name, 
-                                                  batch_size=args.train_batch_size, 
+
+    val_dataloader = create_streaming_dataloader(args.dataset,
+                                                  args.tokenizer,
+                                                  name=args.dataset_config_name,
+                                                  global_rank=global_rank,
+                                                  batch_size=args.train_batch_size,
                                                   split='validation',
                                                   local_dataset=args.local_dataset)
     

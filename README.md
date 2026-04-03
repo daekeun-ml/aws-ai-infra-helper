@@ -3,6 +3,9 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.11
+- **NeMo Megatron-Bridge 벤치마크 추가**: NVIDIA Megatron-Bridge Performance Summary 재현을 위한 벤치마크 스크립트 추가 (Qwen3 30B A3B, Llama3 8B, GPT-OSS 120B, Qwen3-VL 30B A3B, p5/p5e/p5en/p6-b200 인스턴스)
+
 ### v1.0.10
 - **전반적인 코드 리팩토링**: FSDP2, Lightning 학습 스크립트 및 인자 처리 코드 정리
 - **TorchTitan 가이드 대폭 변경**: 새로운 디렉토리 구조로 재편, 벤치마크/스크립트/멀티노드 학습 파일 추가
@@ -278,10 +281,10 @@ S3 동기화나 DRA 설정 없이 `/fsx/data/` 에 바로 다운로드합니다:
 
 ```bash
 # 데이터셋을 /fsx/data/pretrain/ 또는 /fsx/data/sft/ 에 직접 저장
-python3 prepare-datasets.py --local-only
+uv run prepare-datasets.py --local-only
 
 # 저장 경로를 변경하려면 (기본값: /fsx/data)
-python3 prepare-datasets.py --local-only --local-base-dir /fsx/data
+uv run prepare-datasets.py --local-only --local-base-dir /fsx/data
 ```
 
 다운로드가 완료되면 다음 경로에서 데이터셋을 바로 사용할 수 있습니다:
@@ -299,7 +302,7 @@ source stack-env-vars.sh
 ./scripts/create-dra.sh
 
 # 3. 데이터셋 다운로드 및 S3/FSx 동기화
-python3 prepare-datasets.py
+uv run prepare-datasets.py
 ```
 
 이 과정을 통해 선택한 데이터셋이 S3와 FSx Lustre에 자동으로 동기화됩니다.
@@ -338,7 +341,7 @@ PyTorch Lightning과 Lightning Fabric을 활용한 이중 프레임워크 지원
 cd lightning
 
 # PyTorch Lightning (자동화)
-python train.py --gpus=8 --batch_size=4 --max_steps=1000
+uv run  train.py --gpus=8 --batch_size=4 --max_steps=1000
 sbatch train.sbatch
 
 # Pyxis+Enroot 컨테이너 (권장)
@@ -346,7 +349,7 @@ sbatch train.sbatch
 sbatch train-pyxis.sbatch
 
 # Lightning Fabric (세밀한 제어)
-python train_fabric.py --gpus=8 --batch_size=4 --max_steps=1000
+uv run train_fabric.py --gpus=8 --batch_size=4 --max_steps=1000
 sbatch train_fabric.sbatch
 ```
 
@@ -541,9 +544,6 @@ export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 export NCCL_DEBUG=INFO
 export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
-# CUDA 라이브러리
-export LD_PRELOAD=/usr/local/cuda-12.8/lib/libnccl.so
-
 # HuggingFace 타임아웃
 export HF_HUB_ETAG_TIMEOUT=60
 ```
@@ -635,16 +635,6 @@ nvcc --version
 ./scripts/fix-cuda-version.sh
 ```
 
-## 모범 사례
-
-1. **공유 파일시스템 사용**: 모든 노드에서 접근 가능한 FSx for Lustre 사용
-2. **체크포인트 저장**: 정기적으로 체크포인트를 저장하여 장애 복구 시간 최소화
-3. **로그 관리**: 로그 디렉토리를 미리 생성하고 적절한 권한 설정
-4. **환경 검증**: 학습 시작 전 환경 검증 스크립트 실행
-5. **리소스 모니터링**: `squeue`, `nvidia-smi`, `htop` 등으로 리소스 사용량 모니터링
-6. **배치 크기 최적화**: GPU 메모리를 최대한 활용하도록 배치 크기 조정
-7. **자동 재시작 활용**: HyperPod의 자동 재시작 기능으로 안정성 향상
-
 ## 성능 최적화 팁
 
 ### 네트워크 최적화
@@ -669,12 +659,6 @@ nvcc --version
 ## 기여하기
 
 이슈 및 풀 리퀘스트를 환영합니다!
-
-## 주의사항
-
-- `src/legacy` 디렉토리의 파일은 수정하지 마세요
-- `main` 브랜치에 직접 커밋하지 마세요
-- 새로운 스크립트 추가 시 실행 권한 설정: `chmod +x script.sh`
 
 ## 라이센스
 

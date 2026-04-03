@@ -165,7 +165,7 @@ def get_model_config(args):
             use_cache=False,
             pretraining_tp=1,
             tie_word_embeddings=False,
-            rope_scaling= {"type": "dynamic", "factor": 2.0},
+            rope_scaling=None,
         )
         
         
@@ -521,7 +521,7 @@ def create_streaming_dataloader(dataset,
     if dist.is_initialized():
         dist.barrier()
     
-    # Other ranks load after rank 0 is done
+    # Other ranks load after rank 0 is done; cache is already populated so no simultaneous HF Hub hits
     if global_rank != 0:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer, legacy=False)
         if local_dataset:

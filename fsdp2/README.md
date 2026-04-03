@@ -24,6 +24,11 @@ FSDP2는 PyTorch 2.1+에서 제공하는 차세대 분산 학습 전략으로, D
 ## 데이터셋 준비
 
 학습 전 `prepare-datasets.py` (상위 디렉토리)로 데이터셋을 다운로드합니다.
+```bash
+cd ..
+source .venv/bin/activate
+uv run prepare-datasets.py --local-only
+```
 
 ### 지원 데이터셋
 
@@ -42,13 +47,15 @@ FSDP2는 PyTorch 2.1+에서 제공하는 차세대 분산 학습 전략으로, D
 S3 없이 공유 파일시스템에 바로 저장합니다:
 
 ```bash
-cd /fsx/ubuntu/aws-ai-infra-helper
+cd ~/aws-ai-infra-helper
+source .venv/bin/activate
 
 # 대화형 선택 (wikitext-2 권장 — 기본 예제)
-python3 prepare-datasets.py --local-only
+
+uv run prepare-datasets.py --local-only
 
 # 저장 경로 변경 (기본: /fsx/data)
-python3 prepare-datasets.py --local-only --local-base-dir /fsx/data
+uv run prepare-datasets.py --local-only --local-base-dir /fsx/data
 ```
 
 실행하면 아래와 같이 선택 메뉴가 나타납니다:
@@ -84,11 +91,12 @@ Select datasets (1-13, comma-separated): 1
 S3에 업로드한 뒤 FSx for Lustre DRA로 마운트하는 방식입니다:
 
 ```bash
-cd /fsx/ubuntu/aws-ai-infra-helper
+cd ~/aws-ai-infra-helper
+source .venv/bin/activate
 
 # S3 버킷 지정 후 실행
 export S3_BUCKET_NAME=your-bucket-name
-python3 prepare-datasets.py
+uv run prepare-datasets.py
 ```
 
 데이터가 `s3://<bucket>/data/pretrain/<name>/` 경로로 저장되고, DRA를 통해 `/fsx/data/pretrain/<name>/`으로 자동 마운트됩니다.
@@ -123,9 +131,6 @@ export NCCL_SOCKET_IFNAME=^docker,lo,veth,eth
 
 # CUDA 동기화 최적화
 export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
-
-# NCCL 라이브러리 경로 (CUDA 버전에 맞게 조정)
-export LD_PRELOAD=/usr/local/cuda-12.8/lib/libnccl.so
 
 # FSDP2 최적화
 export TORCH_NCCL_BLOCKING_WAIT=1
