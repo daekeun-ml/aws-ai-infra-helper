@@ -54,77 +54,44 @@ uv sync
 
 각 모델의 토크나이저는 HuggingFace에서 다운로드해야 합니다. `--local_dir` 기본값은 `assets/hf/`이며, repo_id의 모델명으로 하위 디렉토리가 자동 생성됩니다.
 
-**Llama3 계열** (`meta-llama` 접근 권한 필요)
+> `debugmodel` 설정은 별도 다운로드 없이 `./tests/assets/tokenizer`를 사용하므로 즉시 실행 가능합니다.
+
+#### 일괄 다운로드 (권장)
+
+`scripts/download_tokenizers.sh`로 지원 모델 전체 또는 원하는 그룹만 한 번에 받을 수 있습니다.
+
+```bash
+# 전체 다운로드 (Llama 계열은 HF_TOKEN 필요)
+HF_TOKEN=[YOUR-HF-TOKEN] ./download_tokenizers.sh
+
+# 그룹 지정 (llama3, llama4, qwen3, qwen3_5_moe, deepseek)
+HF_TOKEN=[YOUR-HF-TOKEN] ./download_tokenizers.sh llama3
+./download_tokenizers.sh qwen3
+./download_tokenizers.sh qwen3 deepseek
+
+# --hf_token 인자로 직접 전달
+./download_tokenizers.sh llama3 llama4 --hf_token [YOUR-HF-TOKEN]
+```
+
+#### 개별 다운로드
+
+**Llama 3.1 예시** (`meta-llama` 접근 권한 필요)
 
 ```bash
 # Llama 3.1 8B (llama3_8b, llama3_8b_* 설정에서 사용)
 uv run scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-8B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
-
-# Llama 3.1 70B (llama3_70b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-70B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
-
-# Llama 3.1 405B (llama3_405b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-3.1-405B --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
 ```
-
-**Llama4 계열** (`meta-llama` 접근 권한 필요)
-
-```bash
-# Llama 4 Maverick 17B 128E (llama4_17bx128e 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-4-Maverick-17B-128E --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
-
-# Llama 4 Scout 17B 16E (llama4_17bx16e 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id meta-llama/Llama-4-Scout-17B-16E --assets tokenizer --hf_token=[YOUR-HF-TOKEN]
-```
-
-**Qwen3 계열** (공개 모델, `--hf_token` 불필요)
-
-```bash
-# Qwen3 0.6B (qwen3_0_6b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-0.6B --assets tokenizer
-
-# Qwen3 1.7B (qwen3_1_7b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-1.7B --assets tokenizer
-
-# Qwen3 14B (qwen3_14b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-14B --assets tokenizer
-
-# Qwen3 32B (qwen3_32b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-32B --assets tokenizer
-
-# Qwen3 30B-A3B (qwen3_30b_a3b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-30B-A3B --assets tokenizer
-
-# Qwen3 235B-A22B (qwen3_235b_a22b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3-235B-A22B --assets tokenizer
-```
-
-**Qwen3.5 MoE 계열** (공개 모델, `--hf_token` 불필요)
-
-```bash
-# Qwen3.5 35B-A3B (qwen3_5_moe 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id Qwen/Qwen3.5-35B-A3B --assets tokenizer
-```
-
-**DeepSeek-V3 계열** (공개 모델, `--hf_token` 불필요)
-
-```bash
-# DeepSeek MoE 16B (deepseek_v3_16b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id deepseek-ai/deepseek-moe-16b-base --assets tokenizer
-
-# DeepSeek-V3.1 Base (deepseek_v3_671b 설정에서 사용)
-python3 scripts/download_hf_assets.py --repo_id deepseek-ai/DeepSeek-V3.1-Base --assets tokenizer
-```
-
-> `debugmodel` 설정은 별도 다운로드 없이 `./tests/assets/tokenizer`를 사용하므로 즉시 실행 가능합니다.
 
 ## run_train.sh 사용법
 
 `run_train.sh`는 로컬 단일 노드 학습을 위한 스크립트입니다. `torchrun`을 사용하여 다중 GPU 학습을 실행합니다.
 
-### 기본 사용법
-
+### 기본 사용법 (compute 단일 노드에서 테스트)
 ```bash
+
+# 가상환경 활성화
+cd ~/aws-ai-infra-helper && source .venv/bin/activate && cd torchtitan
+
 # 기본 실행 (llama3 debugmodel, 8 GPU)
 ./run_train.sh
 
@@ -297,9 +264,11 @@ torchtitan/
 │   ├── config/               # 설정 데이터클래스
 │   └── distributed/          # 분산 학습 유틸리티
 ├── scripts/
-│   ├── download_hf_assets.py # HuggingFace 모델/토크나이저 다운로드
-│   ├── checkpoint_conversion/ # 체크포인트 변환 도구
-│   └── generate/             # 생성(inference) 스크립트
+│   ├── download_hf_assets.py        # HuggingFace 모델/토크나이저 다운로드
+├── download_tokenizers.sh            # 지원 모델 전체 토크나이저 일괄 다운로드
+│   ├── ensure_tokenizer.py          # run_train.sh 실행 전 토크나이저 존재 확인/자동 다운로드
+│   ├── checkpoint_conversion/       # 체크포인트 변환 도구
+│   └── generate/                    # 생성(inference) 스크립트
 ├── benchmarks/               # 커뮤니티 벤치마크 결과
 └── assets/                   # 이미지 등 정적 자산
 ```
@@ -309,3 +278,9 @@ torchtitan/
 - [torchtitan GitHub](https://github.com/pytorch/torchtitan)
 - [AWS HyperPod 문서](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod.html)
 - [PyTorch FSDP2 문서](https://pytorch.org/docs/stable/fsdp.html)
+
+## 라이센스
+
+이 프로젝트는 [torchtitan](https://github.com/pytorch/torchtitan)을 기반으로 수정되었습니다.
+
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved. ([BSD 3-Clause License](https://github.com/pytorch/torchtitan/blob/main/LICENSE))

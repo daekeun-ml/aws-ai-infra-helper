@@ -33,6 +33,9 @@ COMM_MODE=${COMM_MODE:-""}
 
 TORCHFT_LIGHTHOUSE=${TORCHFT_LIGHTHOUSE:-"http://localhost:29510"}
 
+# Ensure tokenizer is present; download automatically if missing
+uv run scripts/ensure_tokenizer.py --module "${MODULE}" --config "${CONFIG}"
+
 if [ -n "$COMM_MODE" ]; then
     # Communication mode specified: validate configuration or run in debug mode
     echo "Running with comm_mode=${COMM_MODE}"

@@ -231,3 +231,5 @@ lightning/*.sqsh
 
 stack-env-vars.sh
 uv.lock
+
+RELEASE_v*.md

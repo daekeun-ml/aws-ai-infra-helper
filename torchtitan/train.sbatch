@@ -38,8 +38,15 @@ export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 ## Set HuggingFace metadata timeout (in seconds) for large clusters
 export HF_HUB_ETAG_TIMEOUT=60
 
+# Change to the parent directory where .venv is located
+cd ..
+
 # Activate virtual environment
-source ../.venv/bin/activate
+source $(pwd)/.venv/bin/activate
+TORCHRUN=$(pwd)/.venv/bin/torchrun
+
+# Change back to torchtitan directory for training
+cd torchtitan
 
 export LD_LIBRARY_PATH=/opt/amazon/efa/lib:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/lib/:$LD_LIBRARY_PATH
@@ -73,5 +80,5 @@ fi
 echo "Nodes: $SLURM_JOB_NUM_NODES, Module: $MODULE, Config: $CONFIG"
 
 dcgmi profile --pause
-srun ${AUTO_RESUME} -l /fsx/ubuntu/.local/bin/torchrun "${TORCHRUN_ARGS[@]}" -m torchtitan.train --module ${MODULE} --config ${CONFIG}
+srun ${AUTO_RESUME} -l $TORCHRUN "${TORCHRUN_ARGS[@]}" -m torchtitan.train --module ${MODULE} --config ${CONFIG}
 dcgmi profile --resume
