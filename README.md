@@ -3,16 +3,23 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.12
+- **토크나이저 자동 다운로드 지원**: `download_tokenizers.sh`로 모델 그룹별 토크나이저 일괄 다운로드, `scripts/ensure_tokenizer.py`로 학습 전 토크나이저 자동 확인 및 다운로드
+- **TorchTitan 설정 개선**: `run_train.sh` pre-flight 체크에 토크나이저 자동 확인 통합, `train.sbatch`에서 venv 로컬 torchrun 경로 자동 인식으로 변경
+- **전체 노드 환경 점검 지원**: `benchmark/01_env_check.sh --all` 옵션 추가 — `srun`으로 모든 컴퓨트 노드 동시 점검
+- **트러블슈팅 가이드 추가**: `TROUBLE_SHOOTING.md` 신규 작성 — Slurm, NCCL/aws-ofi-nccl, Pyxis, GPU/CUDA, 노드 관리, 성능, 메모리, 스토리지, 배포 문제 등 14개 섹션
+
 ### v1.0.11
 - **NeMo Megatron-Bridge 벤치마크 추가**: NVIDIA Megatron-Bridge Performance Summary 재현을 위한 벤치마크 스크립트 추가 (Qwen3 30B A3B, Llama3 8B, GPT-OSS 120B, Qwen3-VL 30B A3B, p5/p5e/p5en/p6-b200 인스턴스)
+
+
+<details>
+<summary>클릭하여 전체 업데이트 내역 보기</summary>
 
 ### v1.0.10
 - **전반적인 코드 리팩토링**: FSDP2, Lightning 학습 스크립트 및 인자 처리 코드 정리
 - **TorchTitan 가이드 대폭 변경**: 새로운 디렉토리 구조로 재편, 벤치마크/스크립트/멀티노드 학습 파일 추가
 - **Lightning 학습 지표 개선**: TPS(Tokens Per Second) 및 TFLOPs/s 실시간 모니터링 추가 (train.py, train_fabric.py)
-
-<details>
-<summary>클릭하여 전체 업데이트 내역 보기</summary>
 
 ### v1.0.9
 - **Workshop Studio 지원 강화**: Workshop Studio의 저사양 GPU 리소스(예: `ml.g5.2xlarge`)에서도 핸즈온 가능하도록 개선
@@ -325,167 +332,16 @@ uv run prepare-datasets.py
 
 ## 분산 학습 프레임워크
 
-### Lightning (PyTorch Lightning + Lightning Fabric)
+각 프레임워크별 상세 가이드를 참고하세요.
 
-PyTorch Lightning과 Lightning Fabric을 활용한 이중 프레임워크 지원으로, 자동화된 학습과 세밀한 제어를 모두 제공합니다.
-
-**주요 특징:**
-- PyTorch Lightning: 자동화된 학습 루프, 콜백, 로깅
-- Lightning Fabric: 커스텀 학습 루프, 세밀한 제어
-- FSDP 분산 학습 및 BF16 Mixed Precision 지원
-- 스마트 체크포인트 관리 (자동 재시작, 완료 감지)
-- 향상된 모니터링 (Loss, Grad Norm, LR, TPS, TFLOPs/s)
-
-**시작하기:**
-```bash
-cd lightning
-
-# PyTorch Lightning (자동화)
-uv run  train.py --gpus=8 --batch_size=4 --max_steps=1000
-sbatch train.sbatch
-
-# Pyxis+Enroot 컨테이너 (권장)
-./setup-pyxis.sh  # 최초 1회 실행
-sbatch train-pyxis.sbatch
-
-# Lightning Fabric (세밀한 제어)
-uv run train_fabric.py --gpus=8 --batch_size=4 --max_steps=1000
-sbatch train_fabric.sbatch
-```
-
-**상세 가이드:** [lightning/README.md](lightning/README.md)
-
-### FSDP (Fully Sharded Data Parallel)
-
-PyTorch 네이티브 분산 학습 프레임워크로, 메모리 효율적인 대규모 모델 학습을 지원합니다.
-
-**주요 특징:**
-- PyTorch 표준 API와 원활한 통합
-- 유연한 샤딩 전략 (FULL_SHARD, SHARD_GRAD_OP, NO_SHARD, HYBRID_SHARD)
-- Activation checkpointing 및 CPU offloading
-- HuggingFace 체크포인트 호환성
-
-**시작하기:**
-```bash
-cd fsdp
-
-# 단일 GPU 테스트
-sbatch train-fsdp-singlegpu.sbatch
-
-# 멀티노드 학습
-sbatch train-fsdp.sbatch
-```
-
-**상세 가이드:** [fsdp/README.md](fsdp/README.md)
-
-### FSDP2 (Fully Sharded Data Parallel v2)
-
-PyTorch 2.5+에서 도입된 차세대 FSDP로, 향상된 성능과 메모리 효율성을 제공합니다.
-
-**주요 특징:**
-- 개선된 통신 오버헤드 및 메모리 사용량
-- 더 나은 컴파일러 최적화 지원
-- 향상된 체크포인트 및 재시작 기능
-- Float8 양자화 지원
-
-**시작하기:**
-```bash
-cd fsdp2
-
-# 단일 노드 학습
-./train-fsdp2-singlenode.sh
-
-# 멀티노드 학습
-sbatch train-fsdp2.sbatch
-
-# Pyxis+Enroot 컨테이너 (권장)
-./setup-pyxis.sh  # 최초 1회 실행
-sbatch train-pyxis.sbatch
-```
-
-**상세 가이드:** [fsdp2/README.md](fsdp2/README.md)
-
-### DeepSpeed
-
-Microsoft에서 개발한 대규모 모델 학습 최적화 라이브러리입니다.
-
-**주요 특징:**
-- ZeRO (Zero Redundancy Optimizer) 단계별 최적화
-- 메모리 효율적인 attention 구현
-- CPU/NVMe offloading 지원
-- 자동 혼합 정밀도 및 gradient clipping
-
-**시작하기:**
-```bash
-cd deepspeed
-
-# Qwen 3 0.6B 단일 노드 학습
-./train-qwen3-0-6b-singlenode.sh
-
-# Qwen 3 0.6B 멀티노드 학습
-sbatch train-qwen3-0-6b.sbatch
-
-# Pyxis+Enroot 컨테이너 (권장)
-./setup-pyxis.sh  # 최초 1회 실행
-sbatch train-pyxis.sbatch
-```
-
-**상세 가이드:** [deepspeed/README.md](deepspeed/README.md)
-
-### Megatron-LM
-
-NVIDIA에서 개발한 대규모 언어 모델 학습 프레임워크입니다.
-
-**주요 특징:**
-- Tensor Parallel, Pipeline Parallel, Data Parallel
-- Sequence Parallel 및 Group-Query Attention
-- 최적화된 Transformer 구현
-- GPT, LLaMA 모델 지원
-
-**시작하기:**
-```bash
-cd megatron
-
-# 데이터 전처리
-sbatch 1.data-preprocessing.sbatch
-
-# 분산 학습
-sbatch 2.distributed-training.sbatch
-```
-
-**상세 가이드:** [megatron/megatron-lm-slurm-guide-ko.md](megatron/megatron-lm-slurm-guide-ko.md)
-
-### TorchTitan
-
-Meta(PyTorch 팀)에서 개발한 PyTorch 네이티브 대규모 언어 모델 사전 학습 플랫폼입니다.
-
-**주요 특징:**
-- FSDP2, Tensor/Pipeline/Context Parallel 등 PyTorch 내장 분산 학습 기능 활용
-- 다양한 모델 지원: Llama 3/4, Qwen3, DeepSeek-V3, GPT, Flux 등
-- Float8 양자화 및 torch.compile 통합
-- Zero-bubble Pipeline Parallel
-- GRPO 강화학습, 비전-언어 모델(VLM) 등 실험적 기능 포함
-- AWS EFA 최적화 설정 내장
-
-**시작하기:**
-```bash
-cd torchtitan
-
-# 로컬 단일 노드 학습 (기본: llama3 debugmodel, 8 GPU)
-./run_train.sh
-
-# 모델/설정 지정
-MODULE=llama3 CONFIG=llama3_8b ./run_train.sh
-
-# GPU 없이 설정 유효성 검증 (dry-run)
-NGPU=32 COMM_MODE="fake_backend" MODULE=llama3 CONFIG=llama3_70b ./run_train.sh
-
-# 멀티노드 학습 (Slurm)
-sbatch --nodes=1 train.sbatch
-sbatch multinode_trainer.slurm
-```
-
-**상세 가이드:** [torchtitan/README.md](torchtitan/README.md)
+| 프레임워크 | 설명 | 가이드 |
+|-----------|------|--------|
+| **Lightning** | PyTorch Lightning + Lightning Fabric 이중 프레임워크 | [lightning/README.md](lightning/README.md) |
+| **FSDP** | PyTorch 네이티브 FSDP 분산 학습 | [fsdp/README.md](fsdp/README.md) |
+| **FSDP2** | 차세대 FSDP2 (PyTorch 2.5+) | [fsdp2/README.md](fsdp2/README.md) |
+| **DeepSpeed** | Microsoft DeepSpeed ZeRO 최적화 | [deepspeed/README.md](deepspeed/README.md) |
+| **Megatron-LM** | NVIDIA Megatron-LM 대규모 모델 학습 | [megatron/megatron-lm-slurm-guide-ko.md](megatron/megatron-lm-slurm-guide-ko.md) |
+| **TorchTitan** | Meta TorchTitan PyTorch 네이티브 학습 플랫폼 | [torchtitan/README.md](torchtitan/README.md) |
 
 ## 유틸리티 스크립트
 
@@ -585,55 +441,7 @@ scontrol show partition
 
 ## 문제 해결
 
-### 연결 문제
-
-```bash
-# SSM 세션이 시작되지 않는 경우
-aws ssm describe-instance-information
-
-# SSH 연결이 안 되는 경우
-# 보안 그룹에서 SSH 포트(22) 허용 확인
-```
-
-### Slurm 문제
-
-```bash
-# Slurm 데몬 상태 확인
-sudo systemctl status slurmd
-
-# Slurm 컨트롤러 확인
-sudo systemctl status slurmctld
-
-# 로그 확인
-sudo journalctl -u slurmd -f
-```
-
-### 네트워크 문제
-
-```bash
-# EFA 드라이버 확인
-fi_info -p efa
-
-# 네트워크 인터페이스 확인
-ifconfig
-
-# NCCL 테스트
-./scripts/generate-nccl-test.sh
-sbatch nccl-test.sbatch
-```
-
-### GPU 문제
-
-```bash
-# GPU 상태 확인
-nvidia-smi
-
-# CUDA 버전 확인
-nvcc --version
-
-# CUDA 버전 수정 (필요시)
-./scripts/fix-cuda-version.sh
-```
+연결, Slurm, 네트워크, GPU 관련 문제 해결 방법은 [TROUBLE_SHOOTING.md](TROUBLE_SHOOTING.md)를 참고하세요.
 
 ## 성능 최적화 팁
 
@@ -682,4 +490,3 @@ MIT-0 License - 자유롭게 사용, 수정, 배포 가능합니다.
 - [Slurm 공식 문서](https://slurm.schedmd.com/)
 - [Pyxis GitHub](https://github.com/NVIDIA/pyxis)
 - [Enroot GitHub](https://github.com/NVIDIA/enroot)
-

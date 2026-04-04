@@ -2,12 +2,27 @@
 # =============================================================================
 # [Step 1] HyperPod 환경 점검
 #
-# 사용법: login 노드 또는 compute 노드에서 직접 실행
-#   login 노드에서 실행 시 sinfo로 첫 번째 compute 노드를 찾아 자동으로 SSH 재실행
+# 사용법:
+#   bash 01_env_check.sh          # 단일 노드 (login 노드 실행 시 첫 번째 compute 노드로 자동 SSH)
+#   bash 01_env_check.sh --all    # 전체 compute 노드 동시 점검 (srun 사용, 공유 파일시스템 필요)
 # =============================================================================
 
+# --all 플래그: srun으로 모든 compute 노드에서 동시 실행
+if [[ "$1" == "--all" ]]; then
+    NUM_NODES=$(sinfo -h -o "%D" 2>/dev/null | awk '{s+=$1}END{print s}')
+    if [ -z "$NUM_NODES" ] || [ "$NUM_NODES" -eq 0 ]; then
+        echo "ERROR: sinfo로 compute 노드를 찾을 수 없습니다. Slurm이 실행 중인지 확인하세요."
+        exit 1
+    fi
+    echo "[INFO] 전체 ${NUM_NODES}개 노드 점검 시작 (srun)..."
+    echo ""
+    srun --nodes=$NUM_NODES --ntasks-per-node=1 bash "$0"
+    exit $?
+fi
+
 # GPU 없으면 login 노드로 간주 → 첫 번째 compute 노드로 SSH하여 재실행
-if ! nvidia-smi -L &>/dev/null; then
+# (srun으로 실행 중인 경우 SLURM_JOB_ID가 설정되므로 이 블록 건너뜀)
+if ! nvidia-smi -L &>/dev/null && [ -z "$SLURM_JOB_ID" ]; then
     echo "[INFO] GPU 미감지 (login 노드). sinfo로 compute 노드 탐색 중..."
     NODELIST=$(sinfo -h -o "%N" 2>/dev/null | head -1)
     FIRST_NODE=$(scontrol show hostnames "$NODELIST" 2>/dev/null | head -1)
@@ -21,8 +36,11 @@ if ! nvidia-smi -L &>/dev/null; then
     exit $?
 fi
 
+# srun으로 실행 중이면 각 노드 출력에 hostname prefix 추가
+[ -n "$SLURM_JOB_ID" ] && HOSTNAME_PREFIX="[$(hostname -s)] " || HOSTNAME_PREFIX=""
+
 echo "============================================================"
-echo " HyperPod B200 Environment Check"
+echo "${HOSTNAME_PREFIX}HyperPod Environment Check"
 echo "============================================================"
 
 echo ""
@@ -58,11 +76,18 @@ ls /opt/amazon/efa/ 2>/dev/null && echo "EFA software: /opt/amazon/efa/ EXISTS" 
 
 echo ""
 echo "--- [5/8] NCCL / aws-ofi-nccl ---"
+OFI_NCCL_PATH=""
 if [ -f /opt/amazon/ofi-nccl/lib/libnccl-net.so ]; then
-    echo "aws-ofi-nccl: INSTALLED (/opt/amazon/ofi-nccl/lib/libnccl-net.so)"
-    ls /opt/amazon/ofi-nccl/lib/ 2>/dev/null
+    OFI_NCCL_PATH=/opt/amazon/ofi-nccl
+elif [ -f /opt/amazon/aws-ofi-nccl/lib/libnccl-net.so ]; then
+    OFI_NCCL_PATH=/opt/amazon/aws-ofi-nccl
+fi
+
+if [ -n "$OFI_NCCL_PATH" ]; then
+    echo "aws-ofi-nccl: INSTALLED ($OFI_NCCL_PATH)"
+    ls $OFI_NCCL_PATH/lib/ 2>/dev/null
 else
-    echo "aws-ofi-nccl: NOT FOUND (확인 경로: /opt/amazon/ofi-nccl/lib/)"
+    echo "aws-ofi-nccl: NOT FOUND (확인 경로: /opt/amazon/ofi-nccl 또는 /opt/amazon/aws-ofi-nccl)"
 fi
 
 echo ""

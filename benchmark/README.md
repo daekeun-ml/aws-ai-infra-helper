@@ -53,10 +53,14 @@ NEMO_VERSION="26.02.01"
 ### 2. 환경 점검
 
 ```bash
+# 단일 노드 점검 (login 노드 실행 시 첫 번째 compute 노드로 자동 SSH)
 bash 01_env_check.sh
+
+# 전체 compute 노드 동시 점검 (srun으로 모든 노드에 배포)
+bash 01_env_check.sh --all
 ```
 
-login 노드에서 실행하면 compute 노드로 자동 SSH하여 점검합니다. GPU, EFA, NCCL, Slurm 구성을 출력합니다.
+GPU, EFA, NCCL/aws-ofi-nccl, Slurm, 컨테이너 런타임, 파일시스템 구성을 출력합니다. `--all` 옵션 사용 시 각 노드 출력 앞에 `[hostname]`이 붙어 노드별 결과를 구분할 수 있습니다. 스크립트가 FSx 등 공유 파일시스템에 있어야 합니다.
 
 ### 3. 컨테이너 준비 (최초 1회)
 
