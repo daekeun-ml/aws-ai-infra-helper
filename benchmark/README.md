@@ -24,12 +24,12 @@
 
 ```
 benchmark/
-├── env.sh                    # 공통 환경 변수 (편집 필요)
-├── 01_env_check.sh           # [Step 1] HyperPod 환경 점검
-├── 02_prepare_container.sh   # [Step 2] NeMo sqsh 컨테이너 생성
-├── 03_run_basic.sh           # [Step 3] 기본 벤치마크 (DGX Reference Config)
-├── 04_run_aws_optimized.sh   # [Step 4] AWS 최적화 벤치마크 (EFA 멀티노드)
-└── presets/                  # 모델별 병렬화 설정
+├── env.sh                       # 공통 환경 변수 (편집 필요)
+├── 01_env_check.sh              # [Step 1] HyperPod 환경 점검
+├── 02_prepare_environment.sh    # [Step 2] sqsh 생성 + 레포 클론 + venv 설치
+├── 03_run_basic.sh              # [Step 3] 기본 벤치마크 (DGX Reference Config)
+├── 04_run_aws_optimized.sh      # [Step 4] AWS 최적화 벤치마크 (EFA 멀티노드)
+└── presets/                     # 모델별 병렬화 설정
 ```
 
 ## 빠른 시작
@@ -62,15 +62,22 @@ bash 01_env_check.sh --all
 
 GPU, EFA, NCCL/aws-ofi-nccl, Slurm, 컨테이너 런타임, 파일시스템 구성을 출력합니다. `--all` 옵션 사용 시 각 노드 출력 앞에 `[hostname]`이 붙어 노드별 결과를 구분할 수 있습니다. 스크립트가 FSx 등 공유 파일시스템에 있어야 합니다.
 
-### 3. 컨테이너 준비 (최초 1회)
+### 3. 환경 준비 (최초 1회)
 
 ```bash
-bash 02_prepare_container.sh
+bash 02_prepare_environment.sh
 ```
 
-NeMo 컨테이너를 docker export 방식으로 `.sqsh` 파일로 변환합니다. login 노드에서 실행하면 compute 노드로 자동 SSH하여 수행합니다.
+다음 4단계를 순서대로 수행합니다:
 
-> 생성 위치: `/fsx/containers/nemo_26.02.01.sqsh` (약 20~30GB, 수십 분 소요)
+1. **sqsh 생성** — NeMo 컨테이너를 docker export → `.sqsh` 변환 (약 20~30GB, 수십 분 소요). 이미 존재하면 스킵.
+2. **Pyxis 연결 확인** — Slurm + Pyxis/Enroot 동작 검증 및 자동 복구 시도.
+3. **레포 클론** — `Megatron-Bridge` v0.3.1을 FSx로 클론.
+4. **venv + NeMo-Run 설치** — Python venv 생성 및 NeMo-Run pip 설치.
+
+login 노드에서 실행하면 compute 노드로 자동 SSH하여 수행합니다.
+
+> sqsh 위치: `/fsx/containers/nemo_26.02.01.sqsh`
 
 ### 4. 벤치마크 실행
 
@@ -104,6 +111,7 @@ bash 04_run_aws_optimized.sh
 
 ## 참고 사항
 
+- **실행 순서**: `02_prepare_environment.sh`를 먼저 한 번 실행한 뒤 `03` 또는 `04`를 실행합니다. `03`, `04`는 02에서 준비한 sqsh / 레포 / venv를 그대로 사용하며, 없으면 에러로 안내합니다.
 - **`03_run_basic.sh` vs `04_run_aws_optimized.sh`**: `03`은 NVIDIA DGX Reference Config 그대로 사용, `04`는 AWS EFA (`aws-ofi-nccl`) 및 Host 라이브러리 마운트 설정을 추가합니다. AWS 멀티노드 환경에서는 `04`를 사용하세요.
 - **컨테이너 방식**: Enroot `.sqsh` (docker export 방식)를 사용합니다. `docker export`로 생성한 flat filesystem이므로 Docker ENV가 소실되며, `run_script.py` V5 패치로 복원합니다.
 - **결과 위치**: `$WORK_DIR/results/<model>_<size>_basic/` 또는 `_multinode/` 하위에 저장됩니다.

@@ -16,7 +16,7 @@
 # 핵심 해결 사항:
 #   1. docker export sqsh → custom_env_vars + run_script.py V5 bootstrap로 ENV 복원
 #   2. Host EFA 라이브러리(libfabric 2.3+) → -cm 단일 옵션에 comma-separated 마운트
-#   3. NCCL_NET_PLUGIN=aws-ofi → aws-ofi-nccl 플러그인 활성화
+#   3. NCCL_NET_PLUGIN=ofi → aws-ofi-nccl 플러그인 활성화 (libnccl-net-ofi.so prefix 매칭)
 #   4. NCCL_PROTO/ALGO 제거 → aws-ofi-nccl 자동 튜닝 사용 (지정시 hang 발생)
 #   5. PP=1 시 VP=None 강제 (H100 base config VP=12 오버라이드)
 # =============================================================================
@@ -278,47 +278,6 @@ else
     echo "  -> run_script.py VP=None 패치 확인됨"
 fi
 
-# ----- VLM_VP_FIX 패치 (VP_PP1_FIX 적용됐지만 VLM_VP_FIX 없는 경우) -----
-if grep -q "VP_PP1_FIX" "$RUN_SCRIPT" 2>/dev/null && ! grep -q "VLM_VP_FIX" "$RUN_SCRIPT" 2>/dev/null; then
-    echo "  -> run_script.py에 VLM_VP_FIX 패치 추가..."
-    python3 << 'PATCH_EOF'
-filepath = "scripts/performance/run_script.py"
-with open(filepath, "r") as f:
-    content = f.read()
-
-old = '''    # VP_PP1_FIX: PP=1이면 VP=None 강제 (base config VP가 남아 있으면 interleaved schedule 오류)
-    if recipe.model.pipeline_model_parallel_size == 1 and recipe.model.virtual_pipeline_model_parallel_size is not None:
-        recipe.model.virtual_pipeline_model_parallel_size = None
-
-    # Select forward step function based on the model family name.
-    if args.domain == "vlm":'''
-new = '''    # VP_PP1_FIX: PP=1이면 VP=None 강제 (base config VP가 남아 있으면 interleaved schedule 오류)
-    if recipe.model.pipeline_model_parallel_size == 1 and recipe.model.virtual_pipeline_model_parallel_size is not None:
-        recipe.model.virtual_pipeline_model_parallel_size = None
-
-    # VLM_VP_FIX: 컨테이너 VLM은 VP 미지원 → VP=None 강제 + moe_a2a_overlap 비활성화
-    # (PP>1 + overlap_moe_expert_parallel_comm=True이면 VP!=None 필수 assertion 회피 목적)
-    if args.domain == "vlm":
-        recipe.model.virtual_pipeline_model_parallel_size = None
-        if hasattr(recipe, 'comm_overlap'):
-            recipe.comm_overlap.overlap_moe_expert_parallel_comm = False
-            recipe.comm_overlap.delay_wgrad_compute = False
-
-    # Select forward step function based on the model family name.
-    if args.domain == "vlm":'''
-
-if old in content:
-    content = content.replace(old, new, 1)
-    with open(filepath, "w") as f:
-        f.write(content)
-    print("  -> VLM_VP_FIX 패치 완료")
-else:
-    print("  -> 패턴 미발견 (이미 패치됨?)")
-PATCH_EOF
-else
-    echo "  -> run_script.py VLM_VP_FIX 이미 적용됨"
-fi
-
 # ----- run_script.py에 Megatron-Bridge v0.3.1 src 경로 패치 -----
 # 컨테이너에는 v0.2.0이 /opt/Megatron-Bridge에 설치되어 있음.
 # v0.3.1 스크립트가 필요한 새 심볼(set_deepseek_v3_pipeline_model_parallel_layout 등)은
@@ -377,8 +336,8 @@ new = '''    if nccl_ub:
     custom_env_vars.setdefault("FI_PROVIDER", "efa")
     custom_env_vars.setdefault("FI_EFA_USE_DEVICE_RDMA", "1")
     custom_env_vars.setdefault("FI_EFA_FORK_SAFE", "1")
-    custom_env_vars.setdefault("NCCL_NET_PLUGIN", "aws-ofi")
-    custom_env_vars.setdefault("NCCL_SOCKET_IFNAME", "^lo,docker0")
+    custom_env_vars.setdefault("NCCL_NET_PLUGIN", "ofi")
+    custom_env_vars.setdefault("NCCL_SOCKET_IFNAME", "^lo,docker0,veth_def_agent")
     custom_env_vars.setdefault("NCCL_DEBUG", "INFO")
     custom_env_vars.setdefault("NCCL_DEBUG_SUBSYS", "INIT,NET")
     custom_env_vars.setdefault("LD_LIBRARY_PATH", "/opt/amazon/efa/lib:/opt/amazon/ofi-nccl/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/local/nvidia/lib64:/opt/hpcx/nccl_rdma_sharp_plugin/lib:/opt/hpcx/ucc/lib:/opt/hpcx/ucx/lib:/opt/hpcx/ompi/lib:/opt/hpcx/sharp/lib")

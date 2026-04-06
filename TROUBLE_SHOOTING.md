@@ -130,8 +130,8 @@ Slurm은 `slurmctld`(컨트롤러)가 `plugstack.conf`를 관리하고, `slurmd`
 export NUM_NODES=<노드 수>
 srun -N $NUM_NODES sudo scontrol reconfigure
 
-# 2. 컴퓨트 노드의 slurmd 재시작 (컨트롤러가 아닌 각 컴퓨트 노드에서 실행)
-sudo systemctl restart slurmd
+# 2. 각 컴퓨트 노드에서 slurmd 재시작 (slurmctld가 실행되는 헤드 노드가 아닌 각 컴퓨트 노드에서 실행)
+srun -N $NUM_NODES sudo systemctl restart slurmd
 
 # 3. 정상 동작 검증
 srun --container-image=nvcr.io#nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi

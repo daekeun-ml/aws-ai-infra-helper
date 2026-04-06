@@ -8,11 +8,10 @@
 #   - GPT-OSS 120B      (MoE, bf16 only)
 #   - Qwen3-VL 30B A3B  (VLM Pretrain, bf16/fp8_cs/fp8_mx)
 #
-# 사전 조건: 02_prepare_container.sh 실행 완료 (sqsh 파일 준비됨)
+# 사전 조건: 02_prepare_environment.sh 실행 완료 (sqsh, 레포, venv 준비됨)
 #
 # HyperPod 헤드노드에서 실행.
-# 레포 클론 (v0.3.1) -> NeMo-Run 설치
-# -> run_script.py V5 패치 + VP=None 패치 (v0.3.1 구조 반영)
+# run_script.py V5 패치 + VP=None 패치 (v0.3.1 구조 반영)
 # -> setup_experiment.py SQSH_ENV_RESTORE 패치 (nccl_ub 블록 뒤 삽입)
 # -> Slurm 잡 제출 -> 자동 모니터링
 # =============================================================================
@@ -88,82 +87,30 @@ echo " Work Dir:        $WORK_DIR (FSx Lustre)"
 echo "============================================================"
 echo ""
 
-# ----- Step 0: 컨테이너 확인 -----
-# sqsh 파일이 없으면 먼저 02_prepare_container.sh를 실행해야 함
-if [ -f "$SQSH_FILE" ]; then
-    CONTAINER_IMAGE="$SQSH_FILE"
-    echo "[0/5] sqsh 컨테이너 사용: $SQSH_FILE ($(ls -lh "$SQSH_FILE" | awk '{print $5}'))"
-else
+# ----- 사전 조건 확인 (02_prepare_environment.sh) -----
+if [ ! -f "$SQSH_FILE" ]; then
     echo "ERROR: sqsh 파일이 없습니다: $SQSH_FILE"
-    echo "먼저 02_prepare_container.sh를 실행하여 컨테이너를 준비하세요."
+    echo "먼저 02_prepare_environment.sh를 실행하세요."
     exit 1
 fi
-echo " Container: $CONTAINER_IMAGE"
+if [ ! -d "$WORK_DIR/Megatron-Bridge" ]; then
+    echo "ERROR: 레포가 없습니다: $WORK_DIR/Megatron-Bridge"
+    echo "먼저 02_prepare_environment.sh를 실행하세요."
+    exit 1
+fi
+if [ ! -f "$WORK_DIR/venv/bin/activate" ]; then
+    echo "ERROR: venv가 없습니다: $WORK_DIR/venv"
+    echo "먼저 02_prepare_environment.sh를 실행하세요."
+    exit 1
+fi
+
+CONTAINER_IMAGE="$SQSH_FILE"
+echo "[준비] sqsh: $SQSH_FILE ($(ls -lh "$SQSH_FILE" | awk '{print $5}'))"
+cd "$WORK_DIR/Megatron-Bridge"
+source "$WORK_DIR/venv/bin/activate"
 echo ""
 
-# ----- Step 1: 작업 디렉토리 + 레포 클론 -----
-echo "[1/5] 작업 디렉토리 + Megatron-Bridge 레포..."
-if [ ! -d "$WORK_DIR" ]; then
-    sudo mkdir -p "$WORK_DIR"
-    sudo chown $(whoami):$(id -gn) "$WORK_DIR"
-fi
-cd "$WORK_DIR"
-
-if [ -d "Megatron-Bridge" ]; then
-    echo "  -> 이미 존재. git fetch..."
-    cd Megatron-Bridge
-    git fetch --all
-else
-    git clone https://github.com/NVIDIA-NeMo/Megatron-Bridge.git
-    cd Megatron-Bridge
-fi
-
-echo "  -> v0.3.1 태그 체크아웃..."
-git stash 2>/dev/null; git checkout v0.3.1 2>/dev/null || git checkout main
-echo "  -> 현재 브랜치: $(git branch --show-current)"
-echo ""
-
-# ----- Step 2: Python venv + NeMo-Run 설치 -----
-echo "[2/5] Python venv + NeMo-Run..."
-
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-if ! python3 -c "import ensurepip" &>/dev/null; then
-    echo "  -> python${PYTHON_VERSION}-venv 설치 중 (ensurepip 없음)..."
-    sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv "python${PYTHON_VERSION}-venv" 2>/dev/null || true
-fi
-
-VENV_DIR="$WORK_DIR/venv"
-if [ -d "$VENV_DIR" ] && [ ! -f "$VENV_DIR/bin/activate" ]; then
-    rm -rf "$VENV_DIR"
-fi
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-fi
-source "$VENV_DIR/bin/activate"
-
-if ! python3 -c "import nemo_run" &>/dev/null; then
-    pip install --upgrade pip
-    echo "  -> NeMo-Run 설치 중..."
-    pip install git+https://github.com/NVIDIA-NeMo/Run.git
-else
-    echo "  -> NeMo-Run 이미 설치됨"
-fi
-
-# NeMo-Run git packager tar 에러 패치
-# FSx Lustre에서 "tar: .: file changed as we read it" (exit 1) 발생.
-# invoke가 exit 1을 에러로 처리하여 submit 실패.
-# git.py의 ctx.run()에 warn=True 추가하여 tar warning 무시.
-GIT_PKG=$(python3 -c "import nemo_run.core.packaging.git as g; print(g.__file__)" 2>/dev/null || true)
-if [ -n "$GIT_PKG" ] && ! grep -q "warn=True" "$GIT_PKG" 2>/dev/null; then
-    echo "  -> NeMo-Run git packager tar 에러 패치..."
-    sed -i 's/ctx\.run(f"tar cf {quoted_output_file} -C {temp_dir} \.")/ctx.run(f"tar cf {quoted_output_file} -C {temp_dir} .", warn=True)/g' "$GIT_PKG"
-    echo "  -> 패치 완료"
-elif [ -n "$GIT_PKG" ]; then
-    echo "  -> NeMo-Run tar 패치 이미 적용됨"
-fi
-echo ""
-
-# ----- Step 2.5: run_script.py에 venv site 패치 (V5) -----
+# ----- Step 1: run_script.py에 venv site 패치 (V5) -----
 # docker export로 만든 sqsh는 Docker ENV를 모두 잃음.
 # V5 패치는 다음을 복원:
 #   1) PATH, LD_LIBRARY_PATH (venv, CUDA, HPC-X)
@@ -320,47 +267,6 @@ else
     echo "  -> run_script.py VP=None 패치 이미 적용됨"
 fi
 
-# ----- Step 2.5b-2: VLM_VP_FIX 패치 (VP_PP1_FIX 적용됐지만 VLM_VP_FIX 없는 경우) -----
-if grep -q "VP_PP1_FIX" "$RUN_SCRIPT" 2>/dev/null && ! grep -q "VLM_VP_FIX" "$RUN_SCRIPT" 2>/dev/null; then
-    echo "  -> run_script.py에 VLM_VP_FIX 패치 추가..."
-    python3 << 'PATCH_EOF'
-filepath = "scripts/performance/run_script.py"
-with open(filepath, "r") as f:
-    content = f.read()
-
-old = '''    # VP_PP1_FIX: PP=1이면 VP=None 강제 (base config VP가 남아 있으면 interleaved schedule 오류)
-    if recipe.model.pipeline_model_parallel_size == 1 and recipe.model.virtual_pipeline_model_parallel_size is not None:
-        recipe.model.virtual_pipeline_model_parallel_size = None
-
-    # Select forward step function based on the model family name.
-    if args.domain == "vlm":'''
-new = '''    # VP_PP1_FIX: PP=1이면 VP=None 강제 (base config VP가 남아 있으면 interleaved schedule 오류)
-    if recipe.model.pipeline_model_parallel_size == 1 and recipe.model.virtual_pipeline_model_parallel_size is not None:
-        recipe.model.virtual_pipeline_model_parallel_size = None
-
-    # VLM_VP_FIX: 컨테이너 VLM은 VP 미지원 → VP=None 강제 + moe_a2a_overlap 비활성화
-    # (PP>1 + overlap_moe_expert_parallel_comm=True이면 VP!=None 필수 assertion 회피 목적)
-    if args.domain == "vlm":
-        recipe.model.virtual_pipeline_model_parallel_size = None
-        if hasattr(recipe, 'comm_overlap'):
-            recipe.comm_overlap.overlap_moe_expert_parallel_comm = False
-            recipe.comm_overlap.delay_wgrad_compute = False
-
-    # Select forward step function based on the model family name.
-    if args.domain == "vlm":'''
-
-if old in content:
-    content = content.replace(old, new, 1)
-    with open(filepath, "w") as f:
-        f.write(content)
-    print("  -> VLM_VP_FIX 패치 완료")
-else:
-    print("  -> 패턴 미발견 (이미 패치됨?)")
-PATCH_EOF
-else
-    echo "  -> run_script.py VLM_VP_FIX 이미 적용됨"
-fi
-
 # ----- Step 2.5c: run_script.py에 Megatron-Bridge v0.3.1 src 경로 패치 -----
 # 컨테이너에는 v0.2.0이 /opt/Megatron-Bridge에 설치되어 있음.
 # v0.3.1 스크립트가 필요한 새 심볼(set_deepseek_v3_pipeline_model_parallel_layout 등)은
@@ -435,35 +341,6 @@ else
     echo "  -> setup_experiment.py SQSH_ENV_RESTORE 이미 패치됨"
 fi
 
-# ----- Step 2.6b: setup_experiment.py에 MB_PYTHONPATH 패치 (SQSH_ENV_RESTORE 이미 적용된 경우) -----
-if grep -q "SQSH_ENV_RESTORE" "$SETUP_SCRIPT" 2>/dev/null && ! grep -q "MB_PYTHONPATH" "$SETUP_SCRIPT" 2>/dev/null; then
-    echo "  -> setup_experiment.py에 MB_PYTHONPATH 패치 적용..."
-    python3 << 'PATCH_EOF'
-filepath = "scripts/performance/setup_experiment.py"
-with open(filepath, "r") as f:
-    content = f.read()
-
-old = '    custom_env_vars.setdefault("TRITON_PTXAS_PATH", "/usr/local/cuda/bin/ptxas")'
-new = '''    custom_env_vars.setdefault("TRITON_PTXAS_PATH", "/usr/local/cuda/bin/ptxas")
-    # MB_PYTHONPATH: 컨테이너 내 구버전 megatron.bridge를 FSx v0.3.1로 override하기 위해 PYTHONPATH 앞에 삽입
-    _mb_src = "/fsx/megatron-bridge-test/Megatron-Bridge/src"
-    _cur_pp = custom_env_vars.get("PYTHONPATH", "")
-    if _mb_src not in _cur_pp:
-        custom_env_vars["PYTHONPATH"] = _mb_src + (":" + _cur_pp if _cur_pp else "")'''
-
-# SQSH_ENV_RESTORE에 이미 MB_PYTHONPATH가 포함된 경우 vs 별도 추가
-if old in content and 'MB_PYTHONPATH' not in content:
-    content = content.replace(old, new, 1)
-    with open(filepath, "w") as f:
-        f.write(content)
-    print("  -> MB_PYTHONPATH 패치 완료")
-else:
-    print("  -> 이미 패치됨 또는 TRITON_PTXAS_PATH 패턴 미발견")
-PATCH_EOF
-else
-    echo "  -> setup_experiment.py MB_PYTHONPATH 이미 패치됨"
-fi
-
 # executors.py 패치 복원 (이전 실행에서 잘못 적용된 경우)
 EXECUTOR_FILE="scripts/performance/utils/executors.py"
 if [ -f "${EXECUTOR_FILE}.bak_path" ]; then
@@ -473,7 +350,7 @@ fi
 echo ""
 
 # ----- Step 3: Dry-run -----
-echo "[3/5] Dry-run: sbatch 스크립트 확인..."
+echo "[1/3] Dry-run: sbatch 스크립트 확인..."
 echo ""
 
 RESULTS_DIR="$WORK_DIR/results/${PRESET_PREFIX}_${MODEL_SIZE}_basic"
@@ -532,7 +409,7 @@ if [[ "$confirm" != [yY] ]]; then
 fi
 
 # ----- Step 4: 실제 제출 -----
-echo "[4/5] 벤치마크 Slurm 잡 제출..."
+echo "[2/3] 벤치마크 Slurm 잡 제출..."
 
 # dryrun 임시 파일 정리
 rm -rf "$WORK_DIR/Megatron-Bridge"/temp_extract_* 2>/dev/null
@@ -561,7 +438,7 @@ deactivate
 
 # ----- Step 5: 자동 모니터링 -----
 echo ""
-echo "[5/5] 로그 모니터링 시작..."
+echo "[3/3] 로그 모니터링 시작..."
 echo ""
 echo " Ctrl+C로 모니터링 종료 (잡은 계속 실행됨)"
 echo "============================================================"
