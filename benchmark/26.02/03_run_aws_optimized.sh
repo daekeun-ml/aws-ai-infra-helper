@@ -8,7 +8,7 @@
 #   - GPT-OSS 120B      (MoE, bf16 only)
 #   - Qwen3-VL 30B A3B  (VLM Pretrain, bf16/fp8_cs/fp8_mx)
 #
-# 사전 조건: 02_prepare_container.sh + 03_run_basic.sh 실행 완료 (레포, venv, sqsh 이미 세팅됨)
+# 사전 조건: 01_prepare_environment.sh + 02_run_basic.sh 실행 완료 (레포, venv, sqsh 이미 세팅됨)
 #
 # v0.3.1에서 docker export sqsh + EFA 멀티노드 구성.
 # setup_experiment.py의 nccl_ub 블록 뒤에 EFA/NCCL 환경변수 패치.
@@ -102,6 +102,12 @@ if [ -z "$PRESET" ]; then
 fi
 source "$PRESET"
 echo "  -> preset: $PRESET"
+# GA가 설정된 경우 GBS 역산: GBS = MBS * GA * DP (DP = NUM_GPUS / (TP*PP*CP))
+if [ -n "${GA// /}" ]; then
+    DP=$((NUM_GPUS / (TP * PP * CP)))
+    GBS=$((MBS * GA * DP))
+    echo "  -> GA=$GA 지정 → GBS 역산: MBS($MBS) * GA($GA) * DP($DP) = $GBS"
+fi
 # =========================================================
 
 echo "============================================================"
@@ -291,7 +297,7 @@ with open(filepath, "r") as f:
 
 patch = '''# MB_SRC_V031: override container's old megatron.bridge with v0.3.1 from FSx
 import sys as _sys3, os as _os3
-_mb_src = '/fsx/megatron-bridge-test/Megatron-Bridge/src'
+_mb_src = '/fsx/megatron-bridge-test-26.02/Megatron-Bridge/src'
 if _os3.path.isdir(_mb_src) and _mb_src not in _sys3.path:
     _sys3.path.insert(0, _mb_src)
 # END MB_SRC_V031
@@ -342,7 +348,7 @@ new = '''    if nccl_ub:
     custom_env_vars.setdefault("NCCL_DEBUG_SUBSYS", "INIT,NET")
     custom_env_vars.setdefault("LD_LIBRARY_PATH", "/opt/amazon/efa/lib:/opt/amazon/ofi-nccl/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/local/nvidia/lib64:/opt/hpcx/nccl_rdma_sharp_plugin/lib:/opt/hpcx/ucc/lib:/opt/hpcx/ucx/lib:/opt/hpcx/ompi/lib:/opt/hpcx/sharp/lib")
     # MB_PYTHONPATH: 컨테이너 내 구버전 megatron.bridge를 FSx v0.3.1로 override하기 위해 PYTHONPATH 앞에 삽입
-    _mb_src = "/fsx/megatron-bridge-test/Megatron-Bridge/src"
+    _mb_src = "/fsx/megatron-bridge-test-26.02/Megatron-Bridge/src"
     _cur_pp = custom_env_vars.get("PYTHONPATH", "")
     if _mb_src not in _cur_pp:
         custom_env_vars["PYTHONPATH"] = _mb_src + (":" + _cur_pp if _cur_pp else "")'''
@@ -370,7 +376,7 @@ with open(filepath, "r") as f:
 old = '    custom_env_vars.setdefault("LD_LIBRARY_PATH", "/opt/amazon/efa/lib:/opt/amazon/ofi-nccl/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/local/nvidia/lib64:/opt/hpcx/nccl_rdma_sharp_plugin/lib:/opt/hpcx/ucc/lib:/opt/hpcx/ucx/lib:/opt/hpcx/ompi/lib:/opt/hpcx/sharp/lib")'
 new = '''    custom_env_vars.setdefault("LD_LIBRARY_PATH", "/opt/amazon/efa/lib:/opt/amazon/ofi-nccl/lib:/usr/local/cuda/lib64:/usr/local/cuda/compat:/usr/local/nvidia/lib64:/opt/hpcx/nccl_rdma_sharp_plugin/lib:/opt/hpcx/ucc/lib:/opt/hpcx/ucx/lib:/opt/hpcx/ompi/lib:/opt/hpcx/sharp/lib")
     # MB_PYTHONPATH: 컨테이너 내 구버전 megatron.bridge를 FSx v0.3.1로 override하기 위해 PYTHONPATH 앞에 삽입
-    _mb_src = "/fsx/megatron-bridge-test/Megatron-Bridge/src"
+    _mb_src = "/fsx/megatron-bridge-test-26.02/Megatron-Bridge/src"
     _cur_pp = custom_env_vars.get("PYTHONPATH", "")
     if _mb_src not in _cur_pp:
         custom_env_vars["PYTHONPATH"] = _mb_src + (":" + _cur_pp if _cur_pp else "")'''
@@ -406,6 +412,8 @@ rm -rf "$WORK_DIR/Megatron-Bridge"/temp_extract_* 2>/dev/null
 
 FSDP_FLAG=""
 [ "${FSDP:-0}" -gt 0 ] && FSDP_FLAG="--use_megatron_fsdp true"
+NO_CUDA_GRAPHS_FLAG=""
+[ "${NO_CUDA_GRAPHS:-0}" -gt 0 ] && NO_CUDA_GRAPHS_FLAG="--cuda_graph_impl none"
 VP_FLAG=""
 [ -n "${VP// /}" ] && VP_FLAG="-vp $VP"
 EP_FLAG=""
@@ -414,7 +422,7 @@ TASK_FLAG=""
 DOMAIN_FLAG=""
 [ "$MODEL_NAME" = "qwen_vl" ] && { TASK_FLAG="--task pretrain"; DOMAIN_FLAG="--domain vlm"; }
 
-echo "[DEBUG] preset: TP=$TP PP=$PP CP=$CP VP='${VP:-}' EP='${EP:-}' MBS=$MBS GBS=$GBS FSDP=${FSDP:-0}"
+echo "[DEBUG] preset: TP=$TP PP=$PP CP=$CP VP='${VP:-}' EP='${EP:-}' MBS=$MBS GBS=$GBS FSDP=${FSDP:-0} NO_CUDA_GRAPHS=${NO_CUDA_GRAPHS:-0}"
 
 # ----- Dry Run -----
 echo ""
@@ -431,7 +439,7 @@ python scripts/performance/setup_experiment.py \
   -g $GPU_TYPE -c $FP8_PRECISION \
   -tp $TP -pp $PP -cp $CP ${VP_FLAG} ${EP_FLAG} \
   -mb $MBS -gb $GBS \
-  ${FSDP_FLAG} \
+  ${FSDP_FLAG} ${NO_CUDA_GRAPHS_FLAG} \
   ${TASK_FLAG} ${DOMAIN_FLAG} \
   -hf "$HF_TOKEN" \
   -l "$RESULTS_DIR" -t "00:30:00" -ms 20 \
@@ -465,7 +473,7 @@ python scripts/performance/setup_experiment.py \
   -g $GPU_TYPE -c $FP8_PRECISION \
   -tp $TP -pp $PP -cp $CP ${VP_FLAG} ${EP_FLAG} \
   -mb $MBS -gb $GBS \
-  ${FSDP_FLAG} \
+  ${FSDP_FLAG} ${NO_CUDA_GRAPHS_FLAG} \
   ${TASK_FLAG} ${DOMAIN_FLAG} \
   -hf "$HF_TOKEN" \
   -l "$RESULTS_DIR" -t "00:30:00" -ms 20 \

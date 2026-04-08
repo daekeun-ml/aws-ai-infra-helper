@@ -3,10 +3,16 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.13
+- **벤치마크 버전별 폴더 분리**: `25.11/`(NeMo 25.11.01 / Megatron-Bridge r0.2.0)과 `26.02/`(NeMo 26.02.01 / Megatron-Bridge v0.3.1)로 독립 분리 — 각 버전마다 `env.sh`, `01_prepare_environment.sh`, `02_run_basic.sh`, `03_run_aws_optimized.sh`, `presets/` 포함
+- **버전별 WORK_DIR 분리**: `25.11`은 `/fsx/megatron-bridge-test-25.11`, `26.02`는 `/fsx/megatron-bridge-test-26.02`로 경로 충돌 방지
+- **공용 환경 점검 스크립트**: `env_check.sh`로 이름 변경, 두 버전 공용 사용
+- **26.02 전용 NCCL 패치 스크립트**: `fix_nccl_setup.sh` 추가 — `setup_experiment.py`의 NCCL 설정을 AWS 환경에 맞게 자동 패치
+
 ### v1.0.12
 - **토크나이저 자동 다운로드 지원**: `download_tokenizers.sh`로 모델 그룹별 토크나이저 일괄 다운로드, `scripts/ensure_tokenizer.py`로 학습 전 토크나이저 자동 확인 및 다운로드
 - **TorchTitan 설정 개선**: `run_train.sh` pre-flight 체크에 토크나이저 자동 확인 통합, `train.sbatch`에서 venv 로컬 torchrun 경로 자동 인식으로 변경
-- **전체 노드 환경 점검 지원**: `benchmark/01_env_check.sh --all` 옵션 추가 — `srun`으로 모든 컴퓨트 노드 동시 점검
+- **전체 노드 환경 점검 지원**: `env_check.sh --all` 옵션 추가 — `srun`으로 모든 컴퓨트 노드 동시 점검
 - **트러블슈팅 가이드 추가**: `TROUBLE_SHOOTING.md` 신규 작성 — Slurm, NCCL/aws-ofi-nccl, Pyxis, GPU/CUDA, 노드 관리, 성능, 메모리, 스토리지, 배포 문제 등 14개 섹션
 
 ### v1.0.11

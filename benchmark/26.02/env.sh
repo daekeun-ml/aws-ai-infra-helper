@@ -8,9 +8,9 @@
 SLURM_ACCOUNT="root"
 SLURM_PARTITION="dev"
 
-HF_TOKEN="[YOUR-HF-TOKEN]"
+HF_TOKEN="" # YOUR-HF-TOKEN
 
-WORK_DIR="/fsx/megatron-bridge-test"
+WORK_DIR="/fsx/megatron-bridge-test-26.02"
 PRESET_DIR="$(dirname "${BASH_SOURCE[0]}")/presets"
 
 # NeMo 컨테이너 버전

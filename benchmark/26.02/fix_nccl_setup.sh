@@ -7,11 +7,11 @@
 #
 # 사용법:
 #   ./fix_nccl_setup.sh [setup_experiment.py 경로]
-#   (기본값: /fsx/megatron-bridge-test/Megatron-Bridge/scripts/performance/setup_experiment.py)
+#   (기본값: /fsx/megatron-bridge-test-26.02/Megatron-Bridge/scripts/performance/setup_experiment.py)
 
 set -euo pipefail
 
-SETUP_SCRIPT="${1:-/fsx/megatron-bridge-test/Megatron-Bridge/scripts/performance/setup_experiment.py}"
+SETUP_SCRIPT="${1:-/fsx/megatron-bridge-test-26.02/Megatron-Bridge/scripts/performance/setup_experiment.py}"
 
 if [[ ! -f "$SETUP_SCRIPT" ]]; then
     echo "ERROR: $SETUP_SCRIPT 를 찾을 수 없습니다." >&2

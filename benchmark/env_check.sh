@@ -3,8 +3,8 @@
 # [Step 1] HyperPod 환경 점검
 #
 # 사용법:
-#   bash 01_env_check.sh          # 단일 노드 (login 노드 실행 시 첫 번째 compute 노드로 자동 SSH)
-#   bash 01_env_check.sh --all    # 전체 compute 노드 동시 점검 (srun 사용, 공유 파일시스템 필요)
+#   bash env_check.sh          # 단일 노드 (login 노드 실행 시 첫 번째 compute 노드로 자동 SSH)
+#   bash env_check.sh --all    # 전체 compute 노드 동시 점검 (srun 사용, 공유 파일시스템 필요)
 # =============================================================================
 
 # --all 플래그: srun으로 모든 compute 노드에서 동시 실행
@@ -112,5 +112,5 @@ GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head 
 GPU_COUNT=$(nvidia-smi -L 2>/dev/null | wc -l)
 echo "GPU: ${GPU_NAME} x ${GPU_COUNT}/node"
 echo ""
-echo ">> 다음 단계: 02 스크립트의 SLURM_ACCOUNT, SLURM_PARTITION 값을 위 결과에서 확인하세요"
+echo ">> 다음 단계: env.sh의 SLURM_ACCOUNT, SLURM_PARTITION 값을 위 결과에서 확인하세요"
 echo "============================================================"

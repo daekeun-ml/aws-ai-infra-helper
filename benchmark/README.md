@@ -2,14 +2,33 @@
 
 [NVIDIA Megatron-Bridge Performance Summary](https://docs.nvidia.com/nemo/megatron-bridge/latest/performance-summary.html) 결과를 AWS HyperPod 환경에서 재현하기 위한 벤치마크 스크립트 모음입니다.
 
-## 테스트 환경
+## 디렉토리 구조
 
-| 항목 | 내용 |
-|------|------|
-| 인스턴스 | p5 (H100), p5e / p5en (H200), p6-b200 (B200) |
-| GPU 구성 | 8장 (1노드), 16장 (2노드) |
-| 컨테이너 | `nvcr.io/nvidia/nemo:26.02.01` |
-| Megatron-Bridge | v0.3.1 |
+```
+benchmark/
+├── env_check.sh                 # 환경 점검 (두 버전 공용)
+├── 25.11/                       # NeMo 25.11.01 / Megatron-Bridge r0.2.0
+│   ├── env.sh
+│   ├── 01_prepare_environment.sh
+│   ├── 02_run_basic.sh
+│   ├── 03_run_aws_optimized.sh
+│   └── presets/
+└── 26.02/                       # NeMo 26.02.01 / Megatron-Bridge v0.3.1
+    ├── env.sh
+    ├── 01_prepare_environment.sh
+    ├── 02_run_basic.sh
+    ├── 03_run_aws_optimized.sh
+    ├── fix_nccl_setup.sh
+    └── presets/
+```
+
+## 버전 선택
+
+| | 25.11 | 26.02 |
+|---|---|---|
+| NeMo 컨테이너 | `nemo:25.11.01` | `nemo:26.02.01` |
+| Megatron-Bridge | r0.2.0 | v0.3.1 |
+| VLM 태스크 | SFT | Pretrain |
 
 ## 지원 모델
 
@@ -18,79 +37,64 @@
 | Qwen3 30B A3B | MoE | fp8_cs / fp8_mx | H100/H200 → fp8_cs, B200/GB200 → fp8_mx |
 | Llama3 8B | Dense | fp8_cs / fp8_mx / bf16 | |
 | GPT-OSS 120B | MoE | bf16 only | 기능 검증 용도 권장 |
-| Qwen3-VL 30B A3B | VLM Pretrain | bf16 / fp8_cs / fp8_mx | |
-
-## 스크립트 구성
-
-```
-benchmark/
-├── env.sh                       # 공통 환경 변수 (편집 필요)
-├── 01_env_check.sh              # [Step 1] HyperPod 환경 점검
-├── 02_prepare_environment.sh    # [Step 2] sqsh 생성 + 레포 클론 + venv 설치
-├── 03_run_basic.sh              # [Step 3] 기본 벤치마크 (DGX Reference Config)
-├── 04_run_aws_optimized.sh      # [Step 4] AWS 최적화 벤치마크 (EFA 멀티노드)
-└── presets/                     # 모델별 병렬화 설정
-```
+| Qwen3-VL 30B A3B | VLM | bf16 only | |
 
 ## 빠른 시작
 
+### 0. 환경 점검
+
+```bash
+# 단일 노드 (login 노드 실행 시 첫 번째 compute 노드로 자동 SSH)
+bash env_check.sh
+
+# 전체 compute 노드 동시 점검
+bash env_check.sh --all
+```
+
+GPU, EFA, NCCL/ofi-nccl, Slurm, 컨테이너 런타임, 파일시스템 구성을 출력합니다.
+
 ### 1. 환경 변수 설정
 
-`env.sh`를 열어 클러스터 환경에 맞게 수정합니다.
+사용할 버전 폴더의 `env.sh`를 수정합니다.
 
 ```bash
-vi env.sh
+vi 26.02/env.sh   # 또는 25.11/env.sh
 ```
 
 ```bash
-SLURM_ACCOUNT="<your-account>"   # sacctmgr show account 결과 참조
-SLURM_PARTITION="<your-partition>" # sinfo 결과 참조
+SLURM_ACCOUNT="<your-account>"      # sacctmgr show account 결과 참조
+SLURM_PARTITION="<your-partition>"  # sinfo 결과 참조
 HF_TOKEN="<your-hf-token>"
-WORK_DIR="/fsx/megatron-bridge-test"  # FSx Lustre 경로
-NEMO_VERSION="26.02.01"
+WORK_DIR="/fsx/megatron-bridge-test-26.02"  # FSx Lustre 경로 (25.11은 /fsx/megatron-bridge-test-25.11)
 ```
 
-### 2. 환경 점검
+### 2. 환경 준비 (최초 1회)
 
 ```bash
-# 단일 노드 점검 (login 노드 실행 시 첫 번째 compute 노드로 자동 SSH)
-bash 01_env_check.sh
-
-# 전체 compute 노드 동시 점검 (srun으로 모든 노드에 배포)
-bash 01_env_check.sh --all
+cd 26.02   # 또는 cd 25.11
+bash 01_prepare_environment.sh
 ```
 
-GPU, EFA, NCCL/aws-ofi-nccl, Slurm, 컨테이너 런타임, 파일시스템 구성을 출력합니다. `--all` 옵션 사용 시 각 노드 출력 앞에 `[hostname]`이 붙어 노드별 결과를 구분할 수 있습니다. 스크립트가 FSx 등 공유 파일시스템에 있어야 합니다.
-
-### 3. 환경 준비 (최초 1회)
-
-```bash
-bash 02_prepare_environment.sh
-```
-
-다음 4단계를 순서대로 수행합니다:
-
+수행 내용:
 1. **sqsh 생성** — NeMo 컨테이너를 docker export → `.sqsh` 변환 (약 20~30GB, 수십 분 소요). 이미 존재하면 스킵.
 2. **Pyxis 연결 확인** — Slurm + Pyxis/Enroot 동작 검증 및 자동 복구 시도.
-3. **레포 클론** — `Megatron-Bridge` v0.3.1을 FSx로 클론.
+3. **레포 클론** — `Megatron-Bridge`를 FSx로 클론.
 4. **venv + NeMo-Run 설치** — Python venv 생성 및 NeMo-Run pip 설치.
 
 login 노드에서 실행하면 compute 노드로 자동 SSH하여 수행합니다.
 
-> sqsh 위치: `/fsx/containers/nemo_26.02.01.sqsh`
-
-### 4. 벤치마크 실행
+### 3. 벤치마크 실행
 
 **단일 노드 또는 소규모 멀티노드 (DGX Reference Config):**
 
 ```bash
-bash 03_run_basic.sh
+bash 02_run_basic.sh
 ```
 
 **AWS EFA 최적화 멀티노드:**
 
 ```bash
-bash 04_run_aws_optimized.sh
+bash 03_run_aws_optimized.sh
 ```
 
 두 스크립트 모두 실행 시 모델 / GPU 타입 / 노드 수를 대화식으로 선택하고, dry-run으로 sbatch 스크립트를 확인한 뒤 제출합니다.
@@ -111,8 +115,8 @@ bash 04_run_aws_optimized.sh
 
 ## 참고 사항
 
-- **실행 순서**: `02_prepare_environment.sh`를 먼저 한 번 실행한 뒤 `03` 또는 `04`를 실행합니다. `03`, `04`는 02에서 준비한 sqsh / 레포 / venv를 그대로 사용하며, 없으면 에러로 안내합니다.
-- **`03_run_basic.sh` vs `04_run_aws_optimized.sh`**: `03`은 NVIDIA DGX Reference Config 그대로 사용, `04`는 AWS EFA (`aws-ofi-nccl`) 및 Host 라이브러리 마운트 설정을 추가합니다. AWS 멀티노드 환경에서는 `04`를 사용하세요.
+- **실행 순서**: `01_prepare_environment.sh`를 먼저 한 번 실행한 뒤 `02` 또는 `03`을 실행합니다. `02`, `03`은 `01`에서 준비한 sqsh / 레포 / venv를 그대로 사용하며, 없으면 에러로 안내합니다.
+- **`02_run_basic.sh` vs `03_run_aws_optimized.sh`**: `02`는 NVIDIA DGX Reference Config 그대로 사용, `03`은 AWS EFA (ofi-nccl) 및 Host 라이브러리 마운트 설정을 추가합니다. AWS 멀티노드 환경에서는 `03`을 사용하세요.
 - **컨테이너 방식**: Enroot `.sqsh` (docker export 방식)를 사용합니다. `docker export`로 생성한 flat filesystem이므로 Docker ENV가 소실되며, `run_script.py` V5 패치로 복원합니다.
 - **결과 위치**: `$WORK_DIR/results/<model>_<size>_basic/` 또는 `_multinode/` 하위에 저장됩니다.
 
