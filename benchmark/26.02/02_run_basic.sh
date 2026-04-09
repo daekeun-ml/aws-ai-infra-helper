@@ -94,6 +94,10 @@ echo "============================================================"
 echo ""
 
 # ----- 사전 조건 확인 (01_prepare_environment.sh) -----
+if [ -z "$HF_TOKEN" ]; then
+    echo "ERROR: HF_TOKEN이 설정되지 않았습니다. env.sh에서 HF_TOKEN을 입력하세요."
+    exit 1
+fi
 if [ ! -f "$SQSH_FILE" ]; then
     echo "ERROR: sqsh 파일이 없습니다: $SQSH_FILE"
     echo "먼저 01_prepare_environment.sh를 실행하세요."

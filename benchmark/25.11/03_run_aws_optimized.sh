@@ -46,20 +46,36 @@ esac
 
 # ===================== GPU 타입 선택 =====================
 echo "GPU 타입을 선택하세요:"
-echo "  1) H100 / H200  (fp8_cs)"
-echo "  2) B200         (fp8_mx)"
-echo "  3) GB200        (fp8_mx)"
+echo "  1) H100 / H200"
+echo "  2) B200"
+echo "  3) GB200"
 read -p "선택 (1/2/3): " gpu_choice
 
 case "$gpu_choice" in
-    1) GPU_TYPE="h100";  FP8_PRECISION="fp8_cs"; CUDA_ARCH="9.0+PTX"  ;;
-    2) GPU_TYPE="b200";  FP8_PRECISION="fp8_mx"; CUDA_ARCH="12.0+PTX" ;;
-    3) GPU_TYPE="gb200"; FP8_PRECISION="fp8_mx"; CUDA_ARCH="12.0+PTX" ;;
+    1) GPU_TYPE="h100";  CUDA_ARCH="9.0+PTX"  ;;
+    2) GPU_TYPE="b200";  CUDA_ARCH="12.0+PTX" ;;
+    3) GPU_TYPE="gb200"; CUDA_ARCH="12.0+PTX" ;;
     *) echo "잘못된 선택. 종료."; exit 1 ;;
 esac
 
-[ "$MODEL_NAME" = "gpt_oss"  ] && FP8_PRECISION="bf16"
-[ "$MODEL_NAME" = "qwen3_vl" ] && FP8_PRECISION="bf16"
+# ===================== Precision 선택 =====================
+if [ "$MODEL_NAME" = "gpt_oss" ]; then
+    # GPT-OSS는 bf16만 지원
+    FP8_PRECISION="bf16"
+    echo "  -> GPT-OSS는 bf16만 지원합니다. Precision: bf16"
+else
+    echo "Precision을 선택하세요:"
+    echo "  1) fp8_mx"
+    echo "  2) fp8_cs"
+    echo "  3) bf16"
+    read -p "선택 (1/2/3): " precision_choice
+    case "$precision_choice" in
+        1) FP8_PRECISION="fp8_mx" ;;
+        2) FP8_PRECISION="fp8_cs" ;;
+        3) FP8_PRECISION="bf16"   ;;
+        *) echo "잘못된 선택. 종료."; exit 1 ;;
+    esac
+fi
 
 # ===================== 노드 수 선택 =====================
 GPUS_PER_NODE=8
@@ -107,6 +123,12 @@ echo " GPU:             $NUM_GPUS x $GPU_TYPE (${NUM_NODES}노드)"
 echo " Precision:       $FP8_PRECISION"
 echo " Container Mounts: $CUSTOM_MOUNTS"
 echo "============================================================"
+
+# ----- 사전 조건 확인 -----
+if [ -z "$HF_TOKEN" ]; then
+    echo "ERROR: HF_TOKEN이 설정되지 않았습니다. env.sh에서 HF_TOKEN을 입력하세요."
+    exit 1
+fi
 
 # sqsh 확인 (AWS 최적화는 sqsh 필수)
 if [ ! -f "$SQSH_FILE" ]; then

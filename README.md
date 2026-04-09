@@ -3,11 +3,19 @@
 AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가이드 모음입니다. HPC 클러스터에서 대규모 분산 학습 및 추론을 쉽게 시작할 수 있습니다.
 
 ## 🚀 What's New
+### v1.0.14
+- **HF_TOKEN 사전 조건 검사 추가**: `02_run_basic.sh`, `03_run_aws_optimized.sh`에 `HF_TOKEN` 미설정 시 조기 종료 처리
+- **GPU/Precision 선택 분리**: `03_run_aws_optimized.sh`에서 GPU 타입 선택과 FP8 Precision 선택을 독립적으로 분리 — GPU 타입에 관계없이 `fp8_mx` / `fp8_cs` / `bf16` 자유 선택 가능
+- **CUDA Graph 이슈 문서 추가**: `benchmark/CUDA_GRAPH_NOTES.md` 신규 작성 — FP8-CS 스케일 팩터 고정(이슈 A)·mRoPE 가변 시퀀스 충돌(이슈 B) 원인 및 해결책 상세 정리
+
 ### v1.0.13
 - **벤치마크 버전별 폴더 분리**: `25.11/`(NeMo 25.11.01 / Megatron-Bridge r0.2.0)과 `26.02/`(NeMo 26.02.01 / Megatron-Bridge v0.3.1)로 독립 분리 — 각 버전마다 `env.sh`, `01_prepare_environment.sh`, `02_run_basic.sh`, `03_run_aws_optimized.sh`, `presets/` 포함
 - **버전별 WORK_DIR 분리**: `25.11`은 `/fsx/megatron-bridge-test-25.11`, `26.02`는 `/fsx/megatron-bridge-test-26.02`로 경로 충돌 방지
 - **공용 환경 점검 스크립트**: `env_check.sh`로 이름 변경, 두 버전 공용 사용
 - **26.02 전용 NCCL 패치 스크립트**: `fix_nccl_setup.sh` 추가 — `setup_experiment.py`의 NCCL 설정을 AWS 환경에 맞게 자동 패치
+
+<details>
+<summary>클릭하여 전체 업데이트 내역 보기</summary>
 
 ### v1.0.12
 - **토크나이저 자동 다운로드 지원**: `download_tokenizers.sh`로 모델 그룹별 토크나이저 일괄 다운로드, `scripts/ensure_tokenizer.py`로 학습 전 토크나이저 자동 확인 및 다운로드
@@ -17,10 +25,6 @@ AWS SageMaker HyperPod 및 ParallelCluster를 위한 헬퍼 스크립트 및 가
 
 ### v1.0.11
 - **NeMo Megatron-Bridge 벤치마크 추가**: NVIDIA Megatron-Bridge Performance Summary 재현을 위한 벤치마크 스크립트 추가 (Qwen3 30B A3B, Llama3 8B, GPT-OSS 120B, Qwen3-VL 30B A3B, p5/p5e/p5en/p6-b200 인스턴스)
-
-
-<details>
-<summary>클릭하여 전체 업데이트 내역 보기</summary>
 
 ### v1.0.10
 - **전반적인 코드 리팩토링**: FSDP2, Lightning 학습 스크립트 및 인자 처리 코드 정리
@@ -150,6 +154,23 @@ aws-ai-infra-helper/
 │   ├── megatron-lm-slurm-guide-ko.md  # Slurm 가이드
 │   └── megatron-lm-eks-guide-ko.md    # EKS 가이드
 │
+├── benchmark/            # NeMo Megatron-Bridge 벤치마크
+│   ├── CUDA_GRAPH_NOTES.md       # CUDA graph 이슈 A·B 분석 및 해결책
+│   ├── env_check.sh              # 전체 노드 환경 점검 스크립트 (공용)
+│   ├── 25.11/                    # NeMo 25.11.01 / Megatron-Bridge r0.2.0
+│   │   ├── env.sh                # 환경 변수 설정
+│   │   ├── 01_prepare_environment.sh  # 환경 준비 (레포·venv·sqsh)
+│   │   ├── 02_run_basic.sh       # 기본 벤치마크 실행
+│   │   ├── 03_run_aws_optimized.sh    # AWS 최적화 벤치마크 실행
+│   │   └── presets/              # 모델별 파라미터 프리셋
+│   └── 26.02/                    # NeMo 26.02.01 / Megatron-Bridge v0.3.1
+│       ├── env.sh                # 환경 변수 설정
+│       ├── 01_prepare_environment.sh  # 환경 준비
+│       ├── 02_run_basic.sh       # 기본 벤치마크 실행
+│       ├── 03_run_aws_optimized.sh    # AWS 최적화 벤치마크 실행
+│       ├── fix_nccl_setup.sh     # NCCL 설정 자동 패치 (26.02 전용)
+│       └── presets/              # 모델별 파라미터 프리셋
+│
 ├── torchtitan/           # TorchTitan 예제
 │   ├── README.md                 # TorchTitan 한국어 가이드
 │   ├── train.sbatch              # 멀티노드 학습 Slurm 스크립트
@@ -226,6 +247,11 @@ aws-ai-infra-helper/
 ### 🔧 유틸리티 및 도구
 - **[scripts/](scripts/)** - 클러스터 연결, 환경 검증, 설치 스크립트
 - **[observability/](observability/)** - 모니터링 및 관찰성 도구 (Prometheus, Grafana 등)
+
+### 📊 벤치마크
+- **[benchmark/25.11/](benchmark/25.11/)** - NeMo 25.11.01 / Megatron-Bridge r0.2.0 벤치마크
+- **[benchmark/26.02/](benchmark/26.02/)** - NeMo 26.02.01 / Megatron-Bridge v0.3.1 벤치마크
+- **[benchmark/CUDA_GRAPH_NOTES.md](benchmark/CUDA_GRAPH_NOTES.md)** - CUDA graph 이슈 분석 및 해결책
 
 ### 🚀 분산 학습 프레임워크
 - **[lightning/](lightning/README.md)** - PyTorch Lightning + Lightning Fabric 이중 프레임워크
