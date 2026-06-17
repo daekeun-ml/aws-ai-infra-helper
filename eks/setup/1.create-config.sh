@@ -27,11 +27,33 @@ fi
 echo "export AWS_REGION=${AWS_REGION}" >> env_vars
 echo "[INFO] AWS_REGION = ${AWS_REGION}"
 
+# Verify AWS credentials BEFORE making any API calls. Otherwise an expired or
+# invalid token makes later calls (e.g. list-clusters) fail silently and the
+# script misreports it as "No HyperPod clusters found".
+echo "[INFO] Verifying AWS credentials..."
+CALLER_IDENTITY=$(aws sts get-caller-identity --region ${AWS_REGION} --output text 2>&1)
+if [ $? -ne 0 ]; then
+    echo "[ERROR] AWS credentials are missing, expired, or invalid."
+    echo "[ERROR] Details: ${CALLER_IDENTITY}"
+    echo "[ERROR] Please authenticate first, then re-run this script. For example:"
+    echo "          export AWS_ACCESS_KEY_ID=..."
+    echo "          export AWS_SECRET_ACCESS_KEY=..."
+    echo "          export AWS_SESSION_TOKEN=...   # required for temporary/workshop credentials"
+    echo "        or run 'aws configure' / 'aws sso login', then verify with:"
+    echo "          aws sts get-caller-identity"
+    exit 1
+fi
+echo "[INFO] Authenticated as: ${CALLER_IDENTITY}"
+
 # Get HyperPod cluster name if not set
 if [ -z "${HYPERPOD_CLUSTER_NAME}" ]; then
     echo "[INFO] HYPERPOD_CLUSTER_NAME not set, searching for HyperPod clusters..."
-    CLUSTERS=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[?ClusterStatus==`InService`].ClusterName' --output text 2>/dev/null)
-    
+    CLUSTERS=$(aws sagemaker list-clusters --region ${AWS_REGION} --query 'ClusterSummaries[?ClusterStatus==`InService`].ClusterName' --output text)
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] Failed to list HyperPod clusters (see error above)."
+        exit 1
+    fi
+
     if [[ ! -z "${CLUSTERS}" && "${CLUSTERS}" != "None" ]]; then
         echo "[INFO] Found HyperPod clusters: ${CLUSTERS}"
         # If only one cluster, use it automatically
