@@ -4,9 +4,13 @@ HyperPod EKS 클러스터 생성 후 필요한 추가 설정을 위한 스크립
 
 ## 사전 요구사항
 
-- AWS CLI 설치 및 구성
+- AWS 자격 증명 구성 (`aws configure` 또는 IAM 역할)
 - HyperPod EKS 클러스터가 이미 생성되어 있어야 함
+- AWS CLI v2는 `1.create-config*.sh` 실행 시 최신 버전으로 자동 설치됩니다
+  (HyperPod `Orchestrator.Eks` 필드를 인식하려면 최신 CLI가 필요)
 - kubectl과 helm은 스크립트에서 자동 설치됩니다
+
+> 오프라인/에어갭 환경 등에서 AWS CLI 자동 설치를 건너뛰려면 `SKIP_AWSCLI_INSTALL=1`을 설정하세요.
 
 ## 실행 순서
 

@@ -1,6 +1,13 @@
 #!/bin/bash
 
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+# Install the latest AWS CLI v2 (older builds lack the HyperPod
+# Orchestrator.Eks field). See ensure-awscli.sh for details.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/ensure-awscli.sh"
+ensure_awscli || { echo "[ERROR] AWS CLI setup failed"; exit 1; }
+
 # Load existing env_vars if available
 if [ -f env_vars ]; then
     source env_vars
