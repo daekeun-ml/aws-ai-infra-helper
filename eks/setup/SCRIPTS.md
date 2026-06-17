@@ -13,7 +13,7 @@
 | 1 | `1.create-config-workshop.sh` | 워크샵(Workshop Studio)용. 위와 같지만 CloudFormation 없이 동작 |
 | 2 | `2.setup-eks-access.sh` | 클러스터 접근 권한 + `kubectl`/`helm` 준비 |
 | 3 | `3.validate-cluster.sh` | 클러스터가 제대로 준비됐는지 종합 점검 |
-| 4 | `4.free_idle_pods_for_workshop.sh` | (선택) 저사양 워크샵에서 Pod 슬롯 확보 |
+| 4 | `4.ensure-workshop-capacity.sh` | (선택) 저사양 워크샵에서 노드 `maxPods` 상향으로 슬롯 확보 |
 | 헬퍼 | `ensure-awscli.sh` | 최신 AWS CLI 자동 설치 (1번 스크립트가 자동 호출) |
 | 유틸 | `check-node-availability.sh` | 노드별 남은 Pod 슬롯 빠르게 확인 |
 | 부트스트랩 | `lifecycle-scripts/on_create.sh` | 노드 생성 시 자동 실행되는 디스크/containerd 세팅 |
@@ -103,26 +103,30 @@
 
 ---
 
-## 4. `4.free_idle_pods_for_workshop.sh`  *(선택)*
+## 4. `4.ensure-workshop-capacity.sh`  *(선택)*
 
 > **Why — 왜 하나?**
-> `ml.g5.2xlarge` 같은 **저사양 인스턴스는 노드 하나가 받을 수 있는 Pod 개수가 적습니다.**
-> 그런데 Kueue·KEDA·각종 컨트롤러 같은 시스템 Pod가 슬롯을 다 차지하면, 정작 핸즈온에서 띄우려는 학습/추론 Pod가 슬롯 부족으로 배포에 실패합니다.
-> 그래서 워크샵에 당장 필요 없는 시스템 Pod들을 정리해 **슬롯을 비워 줍니다.**
+> `ml.g5.2xlarge` 같은 인스턴스에서 HyperPod은 노드의 **kubelet `maxPods`를 매우 낮게(예: 14) 고정**합니다.
+> 정작 인스턴스의 IP 예산(ENI 2개 × 14 = 28)과 기본 kubelet 설정(58)은 훨씬 더 많은 Pod를 허용하는데도요.
+> 슬롯이 14개뿐이면 필수 시스템/HyperPod DaemonSet만으로 거의 차서, 핸즈온에서 띄우려는 학습/추론 Pod가 **슬롯 부족으로 배포에 실패**합니다.
+> 그래서 이 스크립트는 각 노드의 **`maxPods`를 올려(기본 28)** 실제 슬롯을 늘려 줍니다. 아무것도 지우지 않는 **비파괴적** 방식입니다.
 
-> ⚠️ **저사양 인스턴스로 워크샵을 돌릴 때만** 실행하세요. 일반 운영 클러스터에서는 필요한 컴포넌트까지 줄일 수 있으니 쓰지 마세요.
+> ⚠️ **이 변경은 영구적이지 않습니다.** HyperPod이 노드를 재프로비저닝/health-replace 하면 부트스트랩 값(14)으로 돌아갑니다. 노드가 교체되면 다시 실행하세요. (원복은 `--revert`)
+>
+> 💡 **opt-in 정리:** 예전처럼 idle Pod를 정리하고 싶으면 `--free-idle-pods`를 붙이세요. 단, 해당 컴포넌트 다수가 **EKS 관리형 애드온**이라 애드온 컨트롤러가 다시 만들어 효과가 일시적입니다. 보통은 `maxPods` 상향만으로 충분합니다.
 
 **What — 하는 일**
-- Kueue webhook 삭제 / Kueue 컨트롤러 scale-down
-- KEDA 관련 컴포넌트 삭제
-- inference operator·observability 컨트롤러 scale-down/삭제
-- 완료(`Succeeded`)된 Pod 정리
-- 중복 컨트롤러 정리, CoreDNS 레플리카 축소, FSx CSI node 데몬셋 삭제
-- (있으면) PVC 바인딩 어노테이션 수정
-- 마지막에 **노드별 Pod 사용량(현재/최대)** 출력
+- (기본) 각 노드의 nodeadm drop-in에서 `maxPods`를 목표값(기본 28)으로 수정 → kubelet 재시작 (실행 중 Pod는 죽지 않음)
+- 변경 전 원본을 노드에 백업(`...40-nodeadm.conf.bak-maxpods`)
+- 적용 후 `kubelet configz`로 실제 반영 여부 검증, 노드별 Pod 사용량 출력
+- (`--free-idle-pods`) 완료된 Pod 삭제, Kueue/KEDA scale-down, inference ALB 1개로 축소 (best-effort)
 
 ```bash
-./4.free_idle_pods_for_workshop.sh
+./4.ensure-workshop-capacity.sh                  # maxPods를 28로 상향 (기본)
+./4.ensure-workshop-capacity.sh --max-pods 40    # 목표값 지정
+./4.ensure-workshop-capacity.sh --free-idle-pods # idle Pod 정리도 함께
+./4.ensure-workshop-capacity.sh --revert         # 원래 maxPods로 복원
+./4.ensure-workshop-capacity.sh --yes            # 확인 프롬프트 없이 실행
 ```
 
 ---

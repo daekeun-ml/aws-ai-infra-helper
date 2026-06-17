@@ -55,15 +55,17 @@ HyperPod EKS 클러스터 생성 후 필요한 추가 설정을 위한 스크립
 ### 4. 워크샵 환경 최적화 (선택사항)
 
 ```bash
-./4.free_idle_pods_for_workshop.sh
+./4.ensure-workshop-capacity.sh                  # 노드 maxPods를 28로 상향
+./4.ensure-workshop-capacity.sh --free-idle-pods # idle Pod 정리도 함께 (opt-in)
+./4.ensure-workshop-capacity.sh --revert         # 원래 maxPods로 복원
 ```
 
 **⚠️ Workshop Studio에서 `ml.g5.2xlarge` 등 저사양 인스턴스 사용 시에만 실행**
 
-- 불필요한 시스템 Pod 정리 (Kueue, KEDA 등)
-- 완료된 Job Pod 삭제  
-- Pod 개수 제한으로 인한 배포 실패 해결
-- 학습, 배포, task governance 등 핸즈온 실행 전 Pod 슬롯 확보
+- HyperPod이 낮게(예: 14) 고정한 노드 `maxPods`를 상향(기본 28)해 **슬롯 부족으로 인한 배포 실패 해결** (비파괴적)
+- `--free-idle-pods`: 완료된 Pod 삭제 + Kueue/KEDA scale-down (best-effort, 관리형 애드온은 재생성될 수 있음)
+- ⚠️ 노드 재프로비저닝 시 `maxPods`는 원래 값으로 돌아가므로 필요 시 재실행
+- 자세한 설명: [`SCRIPTS.md`](./SCRIPTS.md#4-4ensure-workshop-capacitysh-선택)
 
 ### 5. 환경 변수 로드
 
