@@ -5,9 +5,24 @@ PROFILE=${1:-default}
 
 echo "🚀 Preparing S3 Inference Deployment..."
 
+# Only pass --profile if that profile actually exists; otherwise fall back to
+# the ambient credentials (env vars / IAM role), as IAM-role-only environments
+# such as SageMaker have no named credentials profile.
+PROFILE_OPT=""
+if aws configure list-profiles 2>/dev/null | grep -q "^${PROFILE}$"; then
+    PROFILE_OPT="--profile $PROFILE"
+fi
+
 # Get AWS region and auto-detect instance type
-AWS_REGION=$(aws configure get region --profile $PROFILE)
+if [ -z "$AWS_REGION" ]; then
+    AWS_REGION=$(aws configure get region $PROFILE_OPT 2>/dev/null)
+fi
 INSTANCE_TYPE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null)
+
+if [ -z "$AWS_REGION" ]; then
+    echo "❌ AWS_REGION is not set. Set it in ../../setup/env_vars, the AWS profile, or export AWS_REGION."
+    exit 1
+fi
 
 # Check if we got the instance type
 if [ -z "$INSTANCE_TYPE" ]; then
@@ -27,7 +42,7 @@ fi
 echo "🔍 Using S3 bucket: $S3_BUCKET_NAME"
 
 # Verify bucket exists and has model
-if ! aws s3 ls "s3://$S3_BUCKET_NAME/deepseek15b/" --profile $PROFILE >/dev/null 2>&1; then
+if ! aws s3 ls "s3://$S3_BUCKET_NAME/deepseek15b/" $PROFILE_OPT >/dev/null 2>&1; then
     echo "❌ Model not found in S3 bucket: s3://$S3_BUCKET_NAME/deepseek15b/"
     echo "Please run 3.copy_to_s3.sh first to copy the model"
     exit 1

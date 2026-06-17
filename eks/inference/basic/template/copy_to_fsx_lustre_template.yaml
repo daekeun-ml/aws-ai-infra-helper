@@ -21,6 +21,8 @@ spec:
               value: "<YOUR_ACCESS_KEY_ID>"
             - name: AWS_SECRET_ACCESS_KEY
               value: "<YOUR_SECRET_ACCESS_KEY>"
+            - name: AWS_SESSION_TOKEN  # filled for temp (ASIA) creds, removed for permanent (AKIA) keys
+              value: "<YOUR_SESSION_TOKEN>"
             - name: AWS_DEFAULT_REGION
               value: "<YOUR_AWS_REGION>"
       volumes:

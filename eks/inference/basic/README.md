@@ -26,7 +26,7 @@ kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 # S3 환경 준비
 ./3.copy_to_s3.sh
 ./4.fix_s3_csi_credentials.sh
-./5a.prepare_s3_inference.sh
+./5a.prepare_s3_inference_operator.sh
 
 # 추론 엔드포인트 배포
 kubectl apply -f deploy_S3_inference_operator.yaml
@@ -54,9 +54,9 @@ kubectl get pods -w
 ```
 
 ```bash
-# 문제 해결 스크립트 실행
+# 문제 해결 스크립트 실행 (노드 maxPods 상향으로 슬롯 확보)
 cd ../../setup
-./4.free_idle_pods_for_workshop.sh
+./4.ensure-workshop-capacity.sh
 cd -
 
 # 기존 배포 삭제 후 재배포
@@ -254,6 +254,12 @@ spec:
       limits:
         nvidia.com/gpu: 1
       requests:
+        # ⚠️ cpu/memory 요청은 노드 인스턴스 크기에 맞춰야 합니다.
+        # 아래 값(30 vCPU / 100Gi)은 ml.g5.8xlarge 기준이며, ml.g5.2xlarge
+        # (8 vCPU / 32Gi)에서는 절대 스케줄되지 않아 Pod가 영원히 Pending 됩니다.
+        # ml.g5.2xlarge면 cpu: 6000m / memory: 24Gi 정도로 낮추세요.
+        # (자동화 스크립트 ./2.prepare_fsx_inference.sh 는 인스턴스 타입을
+        #  감지해 이 값을 자동으로 맞춰줍니다.)
         cpu: 30000m
         memory: 100Gi
         nvidia.com/gpu: 1
@@ -393,72 +399,82 @@ EOF
 kubectl get pod test-endpoint
 ```
 
-### Step 3: requests 라이브러리 설치
+### Step 3: Endpoint(Service) 확인
 
 ```bash
-kubectl exec test-endpoint -- pip install requests -q
-```
-
-### Step 4: Endpoint 정보 확인
-
-```bash
-kubectl get endpoints
+kubectl get svc | grep routing-service
+kubectl get endpoints | grep routing-service
 ```
 
 출력 예시:
 ```
-NAME                              ENDPOINTS
-deepseek15b-fsx-routing-service   10.1.112.202:8081
-deepseek15b-routing-service       10.1.111.162:8081
+NAME                              TYPE        CLUSTER-IP      PORT(S)
+deepseek15b-fsx-routing-service   ClusterIP   172.20.49.99    443/TCP
+deepseek15b-routing-service       ClusterIP   172.20.51.10    443/TCP
 ```
 
-### Step 5: FSX Endpoint 테스트
+> **호출 주소 핵심:**
+> - **Service 이름으로 호출하면 됩니다** (Pod IP를 직접 쓸 필요 없음 — IP는 Pod 재시작 시 바뀜).
+>   주소: `<service-name>.<namespace>.svc.cluster.local` (같은 네임스페이스면 `<service-name>`만으로도 가능)
+> - Service 포트는 `443`이지만 **프로토콜은 평문 HTTP**입니다. 따라서 `http://...:443` 으로 호출하세요.
+>   `https://` 로 호출하면 `SSL: WRONG_VERSION_NUMBER` 에러가 납니다.
+> - 경로는 `/invocations` 입니다.
 
-> **Note:** Service DNS 이름 대신 Endpoint IP를 직접 사용해야 합니다. Step 4에서 확인한 IP를 사용하세요.
+### Step 4: FSX Endpoint 테스트
+
+`python:3.11-slim` 이미지에는 `requests`가 없으므로, 추가 설치가 필요 없는 **표준 라이브러리 `urllib`** 를 사용합니다.
 
 ```bash
-# Endpoint IP 확인 (예: 10.1.112.202:8081)
-kubectl get endpoints deepseek15b-fsx-routing-service
-
-# 테스트 실행 (IP를 실제 값으로 변경)
 kubectl exec test-endpoint -- python3 -c '
-import requests
-import json
-
-response = requests.post(
-    "http://10.1.112.202:8081/invocations",  # 실제 Endpoint IP로 변경
+import urllib.request, json
+url = "http://deepseek15b-fsx-routing-service.default.svc.cluster.local:443/invocations"
+req = urllib.request.Request(
+    url,
+    data=json.dumps({"inputs": "Hi, what can you help me with?"}).encode(),
     headers={"Content-Type": "application/json"},
-    json={"inputs": "Hi, what can you help me with?"},
-    timeout=120
 )
-print(f"Status: {response.status_code}")
-print(f"Response: {response.text}")
+with urllib.request.urlopen(req, timeout=120) as r:
+    print("Status:", r.status)
+    print("Response:", r.read().decode())
 '
 ```
 
-### Step 6: S3 Endpoint 테스트
-
+`requests`를 선호하면 먼저 설치 후 사용하세요:
 ```bash
-# Endpoint IP 확인 (예: 10.1.111.162:8081)
-kubectl get endpoints deepseek15b-routing-service
-
-# 테스트 실행 (IP를 실제 값으로 변경)
+kubectl exec test-endpoint -- pip install requests -q
 kubectl exec test-endpoint -- python3 -c '
 import requests
-import json
-
-response = requests.post(
-    "http://10.1.111.162:8081/invocations",  # 실제 Endpoint IP로 변경
+r = requests.post(
+    "http://deepseek15b-fsx-routing-service.default.svc.cluster.local:443/invocations",
     headers={"Content-Type": "application/json"},
     json={"inputs": "Hi, what can you help me with?"},
-    timeout=120
+    timeout=120,
 )
-print(f"Status: {response.status_code}")
-print(f"Response: {response.text}")
+print("Status:", r.status_code)
+print("Response:", r.text)
 '
 ```
 
-### Step 7: 테스트 Pod 정리
+### Step 5: S3 Endpoint 테스트
+
+S3 배포의 경우 Service 이름만 다릅니다 (`deepseek15b-routing-service`):
+
+```bash
+kubectl exec test-endpoint -- python3 -c '
+import urllib.request, json
+url = "http://deepseek15b-routing-service.default.svc.cluster.local:443/invocations"
+req = urllib.request.Request(
+    url,
+    data=json.dumps({"inputs": "Hi, what can you help me with?"}).encode(),
+    headers={"Content-Type": "application/json"},
+)
+with urllib.request.urlopen(req, timeout=120) as r:
+    print("Status:", r.status)
+    print("Response:", r.read().decode())
+'
+```
+
+### Step 6: 테스트 Pod 정리
 
 ```bash
 kubectl delete pod test-endpoint
@@ -507,3 +523,83 @@ kubectl describe pod <pod-name>
 # InferenceEndpointConfig 상세 정보
 kubectl describe inferenceendpointconfig <name>
 ```
+
+---
+
+## 트러블슈팅
+
+### 1. `kubectl apply` 시 conversion webhook 에러
+
+```
+conversion webhook for inference.sagemaker.aws.amazon.com/... failed:
+Post "https://hyperpod-inference-conversion-webhook.../convert...":
+no endpoints available for service "hyperpod-inference-conversion-webhook"
+```
+
+**원인:** webhook을 서빙하는 `hyperpod-inference-controller-manager` Pod가 없습니다. 보통
+`amazon-sagemaker-hyperpod-inference` 애드온이 `CREATE_FAILED` 상태이고, 그 뿌리는 **Kueue가
+scale 0으로 죽어 있어** (`kueue-webhook-service` endpoint 없음) 애드온이 controller-manager
+Deployment를 만들지 못한 것입니다. (워크샵용 Pod 정리 스크립트가 Kueue를 죽인 부작용)
+
+```bash
+# 1) 진단
+kubectl get endpoints hyperpod-inference-conversion-webhook -n hyperpod-inference-system  # <none> 이면 해당
+aws eks describe-addon --cluster-name "$EKS_CLUSTER_NAME" \
+  --addon-name amazon-sagemaker-hyperpod-inference --region "$AWS_REGION" \
+  --query 'addon.{Status:status,Health:health.issues}'
+kubectl get deploy kueue-controller-manager -n kueue-system   # 0/0 이면 죽은 상태
+
+# 2) Kueue 복구 (webhook endpoint 살아남)
+kubectl scale deployment kueue-controller-manager -n kueue-system --replicas=1
+
+# 3) CREATE_FAILED 애드온은 update가 안 되므로, k8s 리소스는 보존(--preserve)하고
+#    등록만 지운 뒤 동일 구성으로 재생성 (재생성 시 controller-manager가 정상 생성됨)
+aws eks delete-addon --cluster-name "$EKS_CLUSTER_NAME" \
+  --addon-name amazon-sagemaker-hyperpod-inference --preserve --region "$AWS_REGION"
+# (삭제 완료 후) 기존 configuration-values 로 다시 create-addon
+```
+
+### 2. FSx 복사 Job이 `ContainerCreating`에서 멈춤
+
+```
+MountVolume.MountDevice failed for volume "fsx-pv":
+driver name fsx.csi.aws.com not found in the list of registered CSI drivers
+```
+
+**원인:** FSx CSI 드라이버의 `fsx-csi-node` DaemonSet이 없어졌습니다 (`aws-fsx-csi-driver`
+애드온이 `DEGRADED`). 역시 워크샵 Pod 정리 스크립트가 슬롯 확보용으로 삭제한 부작용입니다.
+
+```bash
+kubectl get ds -n kube-system | grep fsx          # 없으면 해당
+aws eks update-addon --cluster-name "$EKS_CLUSTER_NAME" \
+  --addon-name aws-fsx-csi-driver --resolve-conflicts OVERWRITE --region "$AWS_REGION"
+```
+
+### 3. 추론 Pod가 계속 `Pending`
+
+```
+FailedScheduling: Insufficient cpu / Insufficient memory
+```
+
+**원인:** deploy YAML의 cpu/memory **요청값이 노드 인스턴스보다 큽니다.** 예: 기본 예시의
+`cpu: 30000m / memory: 100Gi`는 `ml.g5.2xlarge`(8 vCPU / 32Gi)에 절대 안 들어갑니다.
+
+```bash
+kubectl describe pod -l app=deepseek15b-fsx | sed -n '/Events:/,$p'
+# 해결: 요청값을 인스턴스에 맞게 낮춤 (g5.2xlarge → cpu 6000m / memory 24Gi)
+# ./2.prepare_fsx_inference.sh 는 인스턴스 타입을 감지해 자동으로 맞춰줍니다.
+```
+
+### 4. 노드 슬롯 부족(`Too many pods` / Pending)
+
+`ml.g5.2xlarge` 같은 인스턴스는 HyperPod이 kubelet `maxPods`를 낮게(예: 14) 고정합니다.
+`../../setup/4.ensure-workshop-capacity.sh` 로 `maxPods`를 상향해 슬롯을 확보하세요
+(자세한 내용은 [`../../setup/SCRIPTS.md`](../../setup/SCRIPTS.md) 참고).
+
+### 5. 엔드포인트 호출 시 에러
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| `ModuleNotFoundError: No module named 'requests'` | `test-endpoint`(python:3.11-slim) Pod 안에 requests 없음 → `urllib` 사용하거나 `kubectl exec test-endpoint -- pip install requests` |
+| `SSL: WRONG_VERSION_NUMBER` | `https://` 로 호출함 → Service 포트는 443이지만 평문 HTTP이므로 `http://...:443` 사용 |
+| 연결 거부 / Pod IP 변경됨 | Pod IP 대신 **Service 이름**(`<svc>.<ns>.svc.cluster.local:443`)으로 호출 |
