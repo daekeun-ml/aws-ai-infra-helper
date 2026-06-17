@@ -66,7 +66,18 @@ echo ""
 echo "🔧 Checking kubectl installation..."
 if ! command -v kubectl &> /dev/null; then
     echo "⚠️  kubectl not found, installing..."
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    # Detect OS/arch so this works on Linux/macOS and x86_64/ARM (Graviton).
+    case "$(uname -s)" in
+        Linux)  KOS=linux ;;
+        Darwin) KOS=darwin ;;
+        *) echo "❌ Unsupported OS for kubectl install: $(uname -s)"; exit 1 ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64)  KARCH=amd64 ;;
+        aarch64|arm64) KARCH=arm64 ;;
+        *) echo "❌ Unsupported architecture for kubectl install: $(uname -m)"; exit 1 ;;
+    esac
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${KOS}/${KARCH}/kubectl"
     chmod +x kubectl
     sudo mv kubectl /usr/local/bin/
     if command -v kubectl &> /dev/null; then
@@ -90,6 +101,22 @@ else
     echo "❌ kubectl access test failed"
     exit 1
 fi
+
+# Check and install helm if needed
+echo "🔧 Checking helm installation..."
+if ! command -v helm &> /dev/null; then
+    echo "⚠️  helm not found, installing..."
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    if command -v helm &> /dev/null; then
+        echo "✅ helm installed successfully"
+    else
+        echo "❌ helm installation failed"
+        exit 1
+    fi
+else
+    echo "✅ helm is already installed ($(helm version --short))"
+fi
+echo ""
 
 # Test helm access
 echo "⏳ Waiting for EKS permissions to propagate..."
