@@ -88,13 +88,13 @@
 
 → 이 권한이 없으면: `InvalidAccessKeyId`, `No signing credentials`, 또는 마운트 실패로 Pod가 `ContainerCreating`에서 멈춤.
 
-### 4️⃣ 추론 서버 배포 — `5a` (Operator) 또는 `5b` (Direct)
+### 4️⃣ 추론 서버 배포 — Operator (`2` FSx / `5a` S3) 또는 Direct (`5b` S3)
 
 **왜 두 가지 방식?** "누가 배포를 관리하느냐"의 차이입니다.
-- **🅰️ Operator(`5a`)**: `InferenceEndpointConfig`라는 **설정서(CRD)** 하나만 제출하면, HyperPod **operator**가 Deployment·Service·오토스케일링·TLS를 알아서 만들어 줍니다. (자동화 ↑, 단 operator가 살아 있어야 함)
-- **🅱️ Direct(`5b`)**: operator 없이 **표준 Deployment/Service/PV/PVC를 직접** 정의. operator가 고장나도 동작하고 권한 설정도 단순. (워크샵·임시용)
+- **🅰️ Operator(`2` FSx, `5a` S3)**: `InferenceEndpointConfig`라는 **설정서(CRD)** 하나만 제출하면, HyperPod **operator**가 Deployment·Service·오토스케일링·TLS를 알아서 만들어 줍니다. (자동화 ↑, 단 operator가 살아 있어야 함)
+- **🅱️ Direct(`5b` S3)**: operator 없이 **표준 Deployment/Service/PV/PVC를 직접** 정의. operator가 고장나도 동작하고 권한 설정도 단순.
 
-→ 자세한 비교는 아래 [두 S3 배포 방식의 차이](#-두-s3-배포-방식의-차이-operator-vs-direct) 표 참고.
+→ 자세한 비교는 아래 [배포 방식 비교](#-배포-방식-비교) 표 참고.
 
 ### 5️⃣ 엔드포인트 호출(테스트) — `6a.create_test_pod.sh`
 
@@ -138,9 +138,12 @@
 
 ### 2. 배포 방법 선택
 
-#### FSx 기반 배포 (AWS 계정)
+> **계정 종류(정식 AWS vs 워크샵 임시)로 갈리는 게 아닙니다.** 세 방식 모두 양쪽 계정에서 동작합니다.
+> 실제 차이는 **저장소(FSx vs S3)** 와 **배포 주체(Operator vs Direct)** 입니다 — 아래 [방식 비교](#-배포-방식-비교) 참고.
+
+#### 방식 A — FSx 기반 (Operator)
 ```bash
-# FSx 환경 준비
+# FSx 환경 준비 (자격증명은 AWS 프로파일에서 읽어 copy job에 주입)
 ./2.prepare_fsx_inference.sh
 
 # FSx로 모델 복사
@@ -150,7 +153,7 @@ kubectl apply -f copy_to_fsx_lustre.yaml
 kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 ```
 
-#### S3 기반 배포 (AWS 계정)
+#### 방식 B — S3 기반 (Operator)
 ```bash
 # S3 환경 준비
 ./3.copy_to_s3.sh
@@ -161,7 +164,7 @@ kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 kubectl apply -f deploy_S3_inference_operator.yaml
 ```
 
-#### S3 기반 배포 (AWS 워크샵 임시 계정)
+#### 방식 C — S3 기반 (Direct)
 ```bash
 # S3 환경 준비
 ./3.copy_to_s3.sh
@@ -171,24 +174,25 @@ kubectl apply -f deploy_S3_inference_operator.yaml
 kubectl apply -f deploy_S3_direct.yaml
 ```
 
-#### 📌 두 S3 배포 방식의 차이 (Operator vs Direct)
+#### 📌 배포 방식 비교
 
-같은 "S3 모델을 GPU로 서빙"이지만, **누가 배포를 관리하고 S3 권한을 어떻게 얻느냐**가 다릅니다.
+세 방식 모두 **정식 AWS 계정·워크샵 임시 계정 양쪽에서 동작**합니다. 차이는 *계정 종류*가 아니라 **저장소(FSx vs S3)** 와 **배포 주체(Operator vs Direct)**, 그리고 **권한을 얻는 방식**입니다.
 
-| 구분 | 🅰️ Operator 방식 (`5a`) | 🅱️ Direct 방식 (`5b`) |
-|---|---|---|
-| **대상** | 정식 AWS 계정 | 워크샵 임시 계정 |
-| **배포 리소스** | `InferenceEndpointConfig` (CRD) — HyperPod **inference operator**가 Deployment/Service/오토스케일링/TLS를 자동 생성 | 표준 **Deployment + Service + PV/PVC**를 직접 정의 |
-| **operator 의존** | **필요** | **불필요** (operator가 없거나 고장나도 동작) |
-| **중간 단계** | `4.fix_s3_csi_credentials.sh` **있음** | **없음** |
-| **S3 접근 권한** | **IRSA** (OIDC 기반, `s3-csi-driver-sa` 서비스어카운트에 IAM Role 연결) | **노드 IAM Role에 `AmazonS3FullAccess`** 부착 |
-| **권한 범위** | 좁음 (해당 버킷, 최소 액션) — 안전 | 넓음 (전체 S3, 노드의 모든 Pod) — 느슨하지만 간편 |
-| **장점** | 안전, 자동화(스케일링/라우팅/TLS) | 빠름, OIDC/IAM 설정 불필요, operator 고장과 무관 |
-| **단점** | 설정 복잡, operator 정상 동작 필요 | 보안 느슨, 수동 관리 |
+| 구분 | A. FSx (Operator) `2` | B. S3 (Operator) `5a` | C. S3 (Direct) `5b` |
+|---|---|---|---|
+| **저장소** | FSx for Lustre | S3 | S3 |
+| **배포 주체** | inference operator (CRD) | inference operator (CRD) | 표준 Deployment 직접 |
+| **operator 의존** | 필요 | 필요 | **불필요** (고장나도 동작) |
+| **Service 이름·포트** | `…-fsx-routing-service` : 443 | `…-routing-service` : 443 | `deepseek15b` : 8080 |
+| **권한 방식** | copy job에 프로파일 키 주입 | **IRSA** (OIDC, 좁은 권한) | **노드 IAM Role에 S3FullAccess** (넓음) |
+| **언제** | 빠른 파일 접근/공유 스토리지 필요 | 정석·안전한 S3 서빙 | operator 없이 빠르고 간편하게 |
 
 **한 줄 요약**
-- 🅰️ **Operator** = "정석" — operator에게 맡기고 IRSA로 권한을 좁게. **정식 계정**용.
-- 🅱️ **Direct** = "빠르고 간편하게" — 표준 리소스를 직접 띄우고 노드에 S3 풀권한. **워크샵·임시**용.
+- **A. FSx** — 고성능 공유 파일시스템에서 서빙. (모델을 FSx에 두고 빠르게 로드)
+- **B. S3 + Operator** — "정석" S3 서빙. operator가 관리, IRSA로 권한을 좁게.
+- **C. S3 + Direct** — operator 없이 표준 리소스 직접. 가장 간단하지만 노드에 S3 풀권한(느슨).
+
+> 💡 셋 다 워크샵에서도 정식 계정에서도 됩니다. 권한 설정 난이도만 다릅니다(Direct가 가장 단순).
 
 > 💡 `kubectl apply` 시 `conversion webhook ... no endpoints available` 에러는 **🅰️ Operator 경로에서만** 발생합니다 (operator가 필수라서). 🅱️ Direct는 operator를 쓰지 않으므로 이 문제가 없습니다 — 워크샵에서 🅱️를 권하는 이유 중 하나입니다. (해결법은 아래 [트러블슈팅](#트러블슈팅) 참고)
 
@@ -303,7 +307,7 @@ python invoke.py
 | `5b.prepare_s3_direct_deploy.sh` | 🅱️ **Direct 방식** 배포 YAML(`deploy_S3_direct.yaml`) 생성. 표준 Deployment+Service+PV/PVC를 직접 정의하고, **노드 IAM Role에 S3FullAccess**를 붙여 operator 없이 배포. | 🅱️ 워크샵 임시 계정 |
 | `6a.create_test_pod.sh` | **테스트용 Pod**(`test-endpoint`, python:3.11-slim + requests) 생성 후, 배포된 추론 엔드포인트 목록을 보여주고 호출 명령을 안내. | 배포 후 테스트 시 |
 
-> **🅰️ Operator vs 🅱️ Direct 차이**는 위 [두 S3 배포 방식의 차이](#-두-s3-배포-방식의-차이-operator-vs-direct) 표를 참고하세요.
+> **🅰️ Operator vs 🅱️ Direct 차이**는 위 [배포 방식 비교](#-배포-방식-비교) 표를 참고하세요.
 > 두 `4.*` 스크립트는 **S3 CSI 권한을 얻는 방식이 다릅니다**: `4.addon_s3_csi.sh`는 **Pod Identity**, `4.fix_s3_csi_credentials.sh`는 **IRSA(OIDC)** 기반입니다.
 
 ---
