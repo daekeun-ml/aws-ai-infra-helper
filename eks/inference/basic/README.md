@@ -216,7 +216,15 @@ kubectl apply -f deploy_S3_direct.yaml
 
 ## 📊 테스트 
 
-### AWS 워크샵 임시 계정
+> ⚠️ **배포 방식에 따라 Service 이름·포트가 다릅니다** (헷갈리기 쉬움):
+> | 방식 | Deployment | Service | 포트 |
+> |---|---|---|---|
+> | **S3 Direct** (`5b`) | `deepseek15b` | `deepseek15b` | **8080** (HTTP) |
+> | **FSx / S3 Operator** (`2`/`5a`) | `deepseek15b-fsx` | `deepseek15b-fsx**-routing-service**` | **443** (평문 HTTP) |
+>
+> Operator 방식은 Service에 `-routing-service` 접미사가 붙고 포트가 443입니다. (`https://`가 아니라 `http://...:443`)
+
+#### S3 Direct 방식 (`5b` → `deepseek15b`)
 
 ```bash
 # Pod 상태 확인
@@ -228,14 +236,40 @@ kubectl logs -l app=deepseek15b -f
 # Service 확인
 kubectl get svc deepseek15b
 
-# 간단한 테스트
+# 간단한 테스트 (Pod에 직접 exec)
 kubectl exec -it deployment/deepseek15b -- curl -X POST http://localhost:8080/invocations \
   -H 'Content-Type: application/json' \
   -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
 
-# 테스트 (테스트용 Pod 띄우고 실행)
+# 테스트용 Pod 띄워서 Service 이름으로 호출
 kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \
   curl -X POST http://deepseek15b:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
+```
+
+#### FSx / S3 Operator 방식 (`2`/`5a` → `deepseek15b-fsx`)
+
+Operator가 만든 Deployment 이름은 `deepseek15b-fsx`지만, **Service는 `deepseek15b-fsx-routing-service`(포트 443)** 입니다.
+
+```bash
+# Pod 상태 확인
+kubectl get pods -l app=deepseek15b-fsx -w
+
+# 로그 확인 (여러 컨테이너 중 추론 컨테이너 지정)
+kubectl logs -l app=deepseek15b-fsx -c deepseek15b-fsx -f
+
+# Service 확인 (이름이 -routing-service!)
+kubectl get svc deepseek15b-fsx-routing-service
+
+# 간단한 테스트 (Pod에 직접 exec — 추론 컨테이너의 8080)
+kubectl exec -it deployment/deepseek15b-fsx -c deepseek15b-fsx -- curl -X POST http://localhost:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
+
+# 테스트용 Pod 띄워서 Service 이름으로 호출 (포트 443, http:// 사용 — https 아님!)
+kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \
+  curl -X POST http://deepseek15b-fsx-routing-service:443/invocations \
   -H 'Content-Type: application/json' \
   -d '{"inputs": "Explain machine learning in simple terms.", "parameters": {"max_new_tokens": 200, "temperature": 0.7, "repetition_penalty": 1.5}}'
 ```
