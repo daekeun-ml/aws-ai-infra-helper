@@ -19,7 +19,19 @@ spec:
                 - -c
                 - |
                   echo "Installing dependencies..."
-                  pip install peft accelerate bitsandbytes trl datasets --quiet
+                  # Pin versions: the image ships an older transformers, but
+                  # unpinned `pip install peft` pulls a newer peft that imports
+                  # transformers.conversion_mapping (added in transformers 4.49+),
+                  # causing: ModuleNotFoundError: No module named
+                  # 'transformers.conversion_mapping'. Pinning a compatible set
+                  # keeps transformers/peft in sync.
+                  pip install --quiet \
+                    "transformers==4.49.0" \
+                    "peft==0.14.0" \
+                    "accelerate==1.4.0" \
+                    "datasets==3.3.2" \
+                    "trl==0.15.2" \
+                    "bitsandbytes==0.45.3"
 
                   python3 << 'TRAINING_SCRIPT'
                   import os
@@ -177,8 +189,12 @@ spec:
                 limits:
                   nvidia.com/gpu: 1
                 requests:
-                  cpu: "8"
-                  memory: "32Gi"
+                  # ml.g5.2xlarge allocatable is ~7910m CPU / ~29Gi memory
+                  # (8 vCPU / 32Gi minus system reserve), so requesting the full
+                  # "8"/"32Gi" makes the pod unschedulable (Insufficient cpu/memory).
+                  # Keep requests below allocatable; raise for larger instances.
+                  cpu: "6"
+                  memory: "24Gi"
                   nvidia.com/gpu: 1
           volumes:
             - name: workspace
