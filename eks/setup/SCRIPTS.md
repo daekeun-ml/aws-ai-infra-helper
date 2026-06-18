@@ -13,7 +13,7 @@
 | 1 | `1.create-config-workshop.sh` | 워크샵(Workshop Studio)용. 위와 같지만 CloudFormation 없이 동작 |
 | 2 | `2.setup-eks-access.sh` | 클러스터 접근 권한 + `kubectl`/`helm` 준비 |
 | 3 | `3.validate-cluster.sh` | 클러스터가 제대로 준비됐는지 종합 점검 |
-| 4 | `4.ensure-workshop-capacity.sh` | (선택) 저사양 워크샵에서 노드 `maxPods` 상향으로 슬롯 확보 |
+| 4 | `4.ensure-workshop-capacity.sh` | (선택) 저사양 워크샵에서 노드 `maxPods` 상향 + VPC CNI prefix delegation으로 슬롯·IP 확보 |
 | 헬퍼 | `ensure-awscli.sh` | 최신 AWS CLI 자동 설치 (1번 스크립트가 자동 호출) |
 | 유틸 | `check-node-availability.sh` | 노드별 남은 Pod 슬롯 빠르게 확인 |
 | 부트스트랩 | `lifecycle-scripts/on_create.sh` | 노드 생성 시 자동 실행되는 디스크/containerd 세팅 |
@@ -111,22 +111,36 @@
 > 슬롯이 14개뿐이면 필수 시스템/HyperPod DaemonSet만으로 거의 차서, 핸즈온에서 띄우려는 학습/추론 Pod가 **슬롯 부족으로 배포에 실패**합니다.
 > 그래서 이 스크립트는 각 노드의 **`maxPods`를 올려(기본 28)** 실제 슬롯을 늘려 줍니다. 아무것도 지우지 않는 **비파괴적** 방식입니다.
 
-> ⚠️ **이 변경은 영구적이지 않습니다.** HyperPod이 노드를 재프로비저닝/health-replace 하면 부트스트랩 값(14)으로 돌아갑니다. 노드가 교체되면 다시 실행하세요. (원복은 `--revert`)
+> ⚠️ **maxPods만 올리면 안 됩니다 — IP 공급도 함께 늘려야 합니다.**
+> `maxPods`는 **슬롯 한도**만 정합니다. Pod는 슬롯과 별개로 VPC CNI에서 **IP 주소**도 받아야 하는데, prefix delegation이 꺼져 있으면 `ml.g5.2xlarge`는 secondary IP를 **~14개**만 확보합니다. 그래서 IP 쓰는 Pod가 그 수를 넘으면, 슬롯이 남아도 새 Pod가 `failed to assign an IP address to container` 에러로 **`ContainerCreating`에 멈춥니다.**
+> → 이 스크립트는 그래서 **기본으로 VPC CNI prefix delegation도 켭니다**(`ENABLE_PREFIX_DELEGATION=true`). /28 prefix(16 IP 블록)를 할당해 노드의 IP 상한을 높인 `maxPods`에 맞춰 줍니다. (`--no-prefix-delegation`으로 끌 수 있음)
+
+> ⚠️ **"`maxPods`를 올려도 다시 14로 되돌아간다"는 흔한 함정 — 이렇게 해결합니다:**
+> kubelet은 `config.json.d/`의 드롭인들을 **파일명 순서로 병합**하고(높은 번호가 이김), HyperPod의 nodeadm은 kubelet 재시작/노드 부팅 시 **`40-nodeadm.conf`를 다시 만들며 `maxPods`를 14로 재설정**할 수 있습니다. 그래서 그 파일을 직접 고치면 **재생성에 덮어쓰여 14로 되돌아갑니다.**
+> → 이 스크립트는 `40` 파일을 건드리지 않고, **더 높은 우선순위의 별도 드롭인 `99-workshop-maxpods.conf`를 생성**합니다. nodeadm이 40번을 14로 재생성해도 **99번이 항상 이겨서** 설정이 유지됩니다.
+> (이 드롭인은 **완전한 `KubeletConfiguration` 형식**으로 쓰며 — `apiVersion`/`kind` 누락 시 kubelet이 기동 실패해 노드가 NotReady가 되므로 — atomic write + JSON 검증 후 적용합니다.)
+
+> ⚠️ **무엇이 유지되고 무엇이 사라지나:**
+> - **`maxPods`(99 드롭인)**: nodeadm 재생성·kubelet 재시작에는 **견딤**. 단 노드 디스크에 있으므로 HyperPod이 노드를 **완전히 재프로비저닝/health-replace 하면 사라짐**(새 노드는 14로 시작). 노드 교체 후 재실행 필요. (원복은 `--revert` → 99 드롭인 삭제)
+> - **prefix delegation**: VPC CNI(관리형 애드온이면 애드온, 아니면 aws-node DaemonSet)에 설정 → 노드 재프로비저닝에도 **유지됨**.
 >
 > 💡 **opt-in 정리:** 예전처럼 idle Pod를 정리하고 싶으면 `--free-idle-pods`를 붙이세요. 단, 해당 컴포넌트 다수가 **EKS 관리형 애드온**이라 애드온 컨트롤러가 다시 만들어 효과가 일시적입니다. 보통은 `maxPods` 상향만으로 충분합니다.
 
 **What — 하는 일**
-- (기본) 각 노드의 nodeadm drop-in에서 `maxPods`를 목표값(기본 28)으로 수정 → kubelet 재시작 (실행 중 Pod는 죽지 않음)
-- 변경 전 원본을 노드에 백업(`...40-nodeadm.conf.bak-maxpods`)
+- (기본) 각 노드에 **`99-workshop-maxpods.conf` 드롭인을 생성**해 `maxPods`를 목표값(기본 28)으로 설정 → kubelet 재시작 (실행 중 Pod는 죽지 않음). nodeadm의 `40-nodeadm.conf`는 건드리지 않음.
+- 드롭인은 **완전한 KubeletConfiguration 형식**으로 atomic write + JSON 검증 후 적용 (형식 오류로 노드가 죽는 것 방지)
 - 적용 후 `kubelet configz`로 실제 반영 여부 검증, 노드별 Pod 사용량 출력
+- 이미 목표값이면 **건너뜀**(idempotent, kubelet 재시작 안 함)
+- (기본) **VPC CNI prefix delegation 활성화** — 관리형 애드온이면 `aws eks update-addon`(영구), 아니면 `aws-node` DaemonSet 수정 후 롤링 재시작. 이미 켜져 있으면 건너뜀.
 - (`--free-idle-pods`) 완료된 Pod 삭제, Kueue/KEDA scale-down, inference ALB 1개로 축소 (best-effort)
 
 ```bash
-./4.ensure-workshop-capacity.sh                  # maxPods를 28로 상향 (기본)
-./4.ensure-workshop-capacity.sh --max-pods 40    # 목표값 지정
-./4.ensure-workshop-capacity.sh --free-idle-pods # idle Pod 정리도 함께
-./4.ensure-workshop-capacity.sh --revert         # 원래 maxPods로 복원
-./4.ensure-workshop-capacity.sh --yes            # 확인 프롬프트 없이 실행
+./4.ensure-workshop-capacity.sh                       # maxPods 28 상향 + prefix delegation (기본)
+./4.ensure-workshop-capacity.sh --max-pods 40         # maxPods 목표값 지정
+./4.ensure-workshop-capacity.sh --no-prefix-delegation # maxPods만, IP 보정 생략
+./4.ensure-workshop-capacity.sh --free-idle-pods      # idle Pod 정리도 함께
+./4.ensure-workshop-capacity.sh --revert              # 원래 maxPods로 복원
+./4.ensure-workshop-capacity.sh --yes                 # 확인 프롬프트 없이 실행
 ```
 
 ---

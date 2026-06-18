@@ -783,7 +783,35 @@ kubectl describe pod -l app=deepseek15b-fsx | sed -n '/Events:/,$p'
 `../../setup/4.ensure-workshop-capacity.sh` 로 `maxPods`를 상향해 슬롯을 확보하세요
 (자세한 내용은 [`../../setup/SCRIPTS.md`](../../setup/SCRIPTS.md) 참고).
 
-### 5. 엔드포인트 호출 시 에러
+### 5. Pod가 `ContainerCreating`에서 멈추고 `failed to assign an IP address`
+
+```
+Failed to create pod sandbox: ... plugin type="aws-cni" ...
+add cmd: failed to assign an IP address to container
+```
+
+**원인:** **IP 고갈**입니다. 슬롯(`maxPods`)은 남아도 VPC CNI가 줄 **IP가 부족**한 상황입니다.
+prefix delegation이 꺼져 있으면 `ml.g5.2xlarge`는 secondary IP를 **~14개**만 확보하므로, IP 쓰는 Pod가 그 수를 넘으면 새 Pod가 IP를 못 받습니다. (특히 `maxPods`만 28로 올리고 IP 공급을 안 늘렸을 때 발생)
+
+```bash
+# 진단: 노드의 실제 secondary IP 수 vs IP 쓰는 Pod 수
+kubectl get ds aws-node -n kube-system \
+  -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}' | grep PREFIX
+
+# 해결: VPC CNI prefix delegation 활성화 (IP를 /28 prefix=16개 블록으로 확보)
+cd ../../setup && ./4.ensure-workshop-capacity.sh   # 기본으로 prefix delegation까지 켬
+# 또는 직접:
+aws eks update-addon --cluster-name <EKS_CLUSTER> --addon-name vpc-cni \
+  --resolve-conflicts OVERWRITE \
+  --configuration-values '{"env":{"ENABLE_PREFIX_DELEGATION":"true","WARM_PREFIX_TARGET":"1"}}' \
+  --region <REGION>
+# 적용 후, IP를 못 받아 멈춰있던 Pod는 재생성해야 새 prefix IP를 받습니다:
+kubectl delete pod -l app=deepseek15b
+```
+
+> 💡 `maxPods` 상향과 prefix delegation은 **짝**입니다. 슬롯만 늘리고 IP 공급을 안 늘리면 이 에러가 납니다. (prefix delegation은 VPC CNI에 설정되어 노드 재프로비저닝에도 유지됨)
+
+### 6. 엔드포인트 호출 시 에러
 
 | 증상 | 원인 / 해결 |
 |---|---|
