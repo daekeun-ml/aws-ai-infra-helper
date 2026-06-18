@@ -1,183 +1,143 @@
-# Amazon SageMaker HyperPod EKS
+# Amazon SageMaker HyperPod on EKS — 핸즈온 가이드
 
-EKS 기반 Amazon SageMaker HyperPod를 활용한 대규모 AI/ML 모델 훈련 및 추론의 가이드입니다.
+EKS 기반 **Amazon SageMaker HyperPod** 클러스터에서 대규모 AI/ML 모델의 **학습(Training) → 추론(Inference) → 리소스 거버넌스(Task Governance)** 전 과정을 실습하는 가이드 모음입니다.
 
-## 📚 목차
+각 단계는 독립 폴더로 나뉘며, **필요한 부분만 골라** 진행할 수 있습니다. 모든 스크립트는 실제 HyperPod EKS 클러스터에서 실행·검증되었습니다.
 
-- [HyperPod EKS란?](#hyperpod-eks란)
-- [Getting Started](#getting-started)
-- [아키텍처 개요](#아키텍처-개요)
-- [Slurm vs EKS 비교](#slurm-vs-eks-비교)
+<details>
+<summary>📖 <b>처음이신가요? 기본 용어 먼저 보기 (클릭해서 펼치기)</b></summary>
+
+<br>
+
+| 용어 | 쉬운 설명 |
+|---|---|
+| **EKS** | AWS가 관리하는 **쿠버네티스** 클러스터. 컨테이너(앱)를 여러 서버에 띄우고 관리합니다. |
+| **HyperPod** | SageMaker의 대규모 ML 인프라. 자동 장애 복구·헬스 체크를 갖춘 GPU 클러스터로, 여기서는 **EKS 기반**을 씁니다. |
+| **노드(Node)** | 실제 작업이 도는 GPU 서버(EC2 인스턴스) 1대. 예: `ml.g5.2xlarge`. |
+| **Pod** | 컨테이너를 실행하는 가장 작은 단위. "앱 1개 = Pod 1개". |
+| **kubectl** | 쿠버네티스를 조작하는 명령줄 도구. |
+| **Operator** | 특정 리소스(CRD)를 감시하다 자동으로 배포·관리해 주는 컨트롤러. (학습=Kubeflow Training Operator, 추론=HyperPod Inference Operator) |
+| **PyTorchJob / InferenceEndpointConfig** | 각각 "분산 학습 정의서", "추론 엔드포인트 정의서" (쿠버네티스 CRD). YAML로 제출하면 operator가 처리합니다. |
+| **Kueue / Task Governance** | 여러 팀·작업이 GPU를 나눠 쓰도록 **큐·우선순위·할당량**을 관리하는 시스템. |
+| **FSx for Lustre / S3** | 모델·데이터를 두는 스토리지. FSx=고성능 공유 파일시스템, S3=오브젝트 스토리지. |
+
+> 더 깊은 개념(HyperPod이 일반 EKS와 무엇이 다른지, 복원력 기능 등)은 [`FEATURES.md`](./FEATURES.md)를 참고하세요.
+
+</details>
 
 ---
 
-## HyperPod EKS란?
+## 🗺️ 전체 구조
 
-**Amazon SageMaker HyperPod EKS**는 대규모 파운데이션 모델의 훈련과 추론을 위해 설계된 관리형 Kubernetes 기반 AI 인프라입니다. 기존 Slurm 기반 HyperPod의 복원력(resiliency)과 Kubernetes의 유연성을 결합하여, 전체 모델 라이프사이클(훈련 → 파인튜닝 → 추론)을 하나의 통합 클러스터에서 관리할 수 있습니다.
+```
+eks/
+├── setup/             # ① 클러스터 접근·검증 (먼저 1회)
+├── training/          # ② LoRA Fine-tuning (Kubeflow PyTorchJob)
+├── inference/         # ③ 추론 엔드포인트 배포
+│   ├── basic/         #    - 기본: FSx / S3 기반 배포 + 테스트
+│   └── kvcache-and-intelligent-routing/   # - 고급: KV Cache·라우팅 벤치마크
+├── task-governance/   # ④ 팀·작업 간 GPU 리소스 거버넌스 (Kueue)
+└── FEATURES.md        # HyperPod EKS 개념·특징 설명
+```
 
-### 핵심 가치
-
-| 측면 | 설명 |
-|------|------|
-| **복원력** | 자동 노드 복구, Deep Health Checks, Job Auto-Resume |
-| **생산성** | Kubernetes 네이티브 도구(kubectl, Helm), Python SDK 지원 |
-| **효율성** | 훈련/추론 리소스 통합, Task Governance로 30% 비용 절감 |
-| **확장성** | Karpenter 자동 스케일링, 수천 GPU 지원 |
+> **권장 순서**: `setup` → (`training` 또는 `inference`) → 필요 시 `task-governance`.
+> setup을 제외한 나머지는 서로 독립적입니다.
 
 ---
 
-## Getting Started
+## 🚀 빠른 시작
 
-HyperPod EKS를 시작하는 빠른 가이드입니다. 각 단계는 독립적으로 실행 가능하며, 필요한 부분만 선택하여 진행할 수 있습니다.
+### ① Setup — 클러스터 접근 설정 (최초 1회) · [setup/README.md](./setup/README.md)
 
-### 1. Setup (클러스터 설정)
-
-HyperPod EKS 클러스터를 생성하고 기본 구성을 완료합니다.
+학습·추론에 앞서 **클러스터 정보 수집 → 접근 권한 → 검증**을 한 번 끝내 둡니다.
 
 ```bash
-# 클러스터 생성 (CloudFormation 또는 AWS CLI)
-aws sagemaker create-cluster \
-  --cluster-name my-hyperpod-cluster \
-  --orchestrator Type=EKS
-
-# kubeconfig 설정
-aws sagemaker update-kubeconfig --cluster-name my-hyperpod-cluster
-
-# 기본 구성
 cd setup
-./1.create-config-workshop
-./2.setup-eks-access.sh
-./3.validate-cluster.sh
+./1.create-config-workshop.sh   # 클러스터 정보를 env_vars에 수집 (워크샵용)
+                                # 일반 계정은 ./1.create-config.sh
+./2.setup-eks-access.sh         # EKS 접근 권한 + kubectl/helm 설치
+./3.validate-cluster.sh         # 노드·GPU·오퍼레이터·스토리지 점검
+cd ..
 ```
 
-**상세 가이드:** [setup/README.md](./setup/README.md)
+> 작은 인스턴스(g5.2xlarge 등)에서 Pod 슬롯이 부족하면 `setup/4.ensure-workshop-capacity.sh`로 노드 `maxPods`를 올릴 수 있습니다. 각 스크립트 상세는 [setup/SCRIPTS.md](./setup/SCRIPTS.md) 참고.
 
-### 2. Training (모델 훈련)
+### ② Training — LoRA Fine-tuning · [training/README.md](./training/README.md)
 
-Kubeflow Training Operator를 사용한 분산 훈련 실행
+DeepSeek-R1-Distill-Qwen-1.5B를 **Kubeflow PyTorchJob**으로 분산 fine-tuning합니다.
 
 ```bash
-# PyTorchJob 제출
-kubectl apply -f training/pytorchjob-example.yaml
-
-# 훈련 상태 확인
-kubectl get pytorchjobs
-kubectl logs -f pytorch-training-worker-0
+cd training
+./1.grant_eks_access.sh    # 클러스터 접근 (setup 했으면 빠르게 통과)
+./2.run_training.sh        # PyTorchJob 배포 → worker Pod로 분산 학습
+./3.monitor_training.sh    # 실시간 로그·상태 모니터링
+./4.cleanup.sh             # 정리
 ```
 
-**상세 가이드:** [training/README.md](./training/README.md)
+### ③ Inference — 추론 엔드포인트 · [inference/README.md](./inference/README.md)
 
-### 3. Inference (모델 추론)
-
-Inference Operator를 통한 추론 엔드포인트 배포
+학습된 모델을 **HyperPod Inference Operator**(또는 표준 Deployment)로 서빙합니다.
 
 ```bash
-# 추론 엔드포인트 생성
-kubectl apply -f inference/vllm-endpoint.yaml
-
-# 엔드포인트 URL 확인
-kubectl get inferenceendpoint
-
-# 추론 테스트
-curl -X POST https://<endpoint-url>/v1/completions \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello", "max_tokens": 50}'
+cd inference/basic
+./1.grant_eks_access.sh
+# 배포 방식 선택 (FSx / S3-Operator / S3-Direct) — 상세는 basic/README.md
+./2.prepare_fsx_inference.sh && kubectl apply -f deploy_fsx_lustre_inference_operator.yaml
 ```
 
-**상세 가이드:** [inference/README.md](./inference/README.md)
+- **기본 배포·테스트**: [inference/basic/README.md](./inference/basic/README.md)
+- **고급(KV Cache·지능형 라우팅 벤치마크)**: [inference/kvcache-and-intelligent-routing/README.md](./inference/kvcache-and-intelligent-routing/README.md)
 
-### 4. Task Governance (리소스 관리)
+### ④ Task Governance — 리소스 거버넌스 · [task-governance/README.md](./task-governance/README.md)
 
-팀별 리소스 할당 및 우선순위 관리로 비용 최적화
+여러 팀·작업이 GPU를 효율적으로 나눠 쓰도록 **Kueue 기반 큐·우선순위·할당량**을 설정합니다.
 
 ```bash
-# ResourceFlavor 및 ClusterQueue 설정
-kubectl apply -f task-governance/resource-config.yaml
-
-# 팀별 LocalQueue 생성
-kubectl apply -f task-governance/team-queue.yaml
-
-# 작업 제출 시 큐 지정
-kubectl apply -f training/job-with-queue.yaml
-```
-
-**상세 가이드:** [task-governance/README.md](./task-governance/README.md)
-
----
-
-## 아키텍처 개요
-
-### HyperPod EKS 전체 구조
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   Amazon SageMaker HyperPod                      │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                    Amazon EKS Cluster                      │  │
-│  │                                                             │  │
-│  │  ┌──────────────────┐  ┌──────────────────┐               │  │
-│  │  │  Training Pods   │  │  Inference Pods  │               │  │
-│  │  │  ┌────────────┐  │  │  ┌────────────┐  │               │  │
-│  │  │  │ PyTorchJob │  │  │  │  vLLM      │  │               │  │
-│  │  │  │ (Kubeflow) │  │  │  │ TGI/DJL    │  │               │  │
-│  │  │  └────────────┘  │  │  └────────────┘  │               │  │
-│  │  └──────────────────┘  └──────────────────┘               │  │
-│  │                                                             │  │
-│  │  ┌─────────────────────────────────────────────────────┐  │  │
-│  │  │           HyperPod 관리 컴포넌트                      │  │
-│  │  │  • Inference Operator (추론 배포 자동화)              │  │
-│  │  │  • Task Governance (리소스 할당 관리)                 │  │
-│  │  │  • Health Monitoring Agent (노드 복구)                │  │
-│  │  │  • Karpenter (오토스케일링)                           │  │
-│  │  └─────────────────────────────────────────────────────┘  │  │
-│  │                                                             │  │
-│  │  ┌─────────────────────────────────────────────────────┐  │  │
-│  │  │              GPU Worker Nodes                        │  │
-│  │  │  ml.p5.48xlarge (H100), ml.g5.12xlarge (A10G)        │  │
-│  │  │  • NVIDIA Device Plugin                              │  │
-│  │  │  • EFA (Elastic Fabric Adapter) 네트워크              │  │
-│  │  │  • FSx for Lustre / S3 CSI 마운트                     │  │
-│  │  └─────────────────────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                   │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │                     Storage Layer                          │  │
-│  │  • FSx for Lustre (공유 고성능 스토리지)                   │  │
-│  │  • S3 CSI Driver (S3 직접 접근)                            │  │
-│  │  • EBS (Persistent Volume)                                 │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 데이터 흐름
-
-```
-훈련 워크플로우:
-사용자 → kubectl apply -f pytorchjob.yaml → Kubeflow Operator →
-  → Pod 스케줄링 → FSx에서 데이터 로드 → 분산 훈련 → 체크포인트 저장
-
-추론 워크플로우:
-사용자 → kubectl apply -f inferenceendpoint.yaml → Inference Operator →
-  → S3/FSx에서 모델 로드 → vLLM/TGI 서버 시작 → ALB 프로비저닝 →
-  → HTTPS 엔드포인트 제공
+cd task-governance
+./setup-task-governance.sh        # ClusterQueue·LocalQueue·우선순위 구성
+# 큐가 막히면: ./fix-stuck-namespaces.sh
 ```
 
 ---
 
-## Slurm vs EKS 비교
+## 📂 각 영역 요약
 
-HyperPod는 두 가지 오케스트레이션 방식을 지원합니다. 워크로드 특성에 따라 선택하세요.
+| 영역 | 무엇을 하나 | 핵심 기술 | 상세 |
+|---|---|---|---|
+| **setup** | 클러스터 접근·권한·검증, 도구 자동 설치 | EKS Access Entry, kubectl/helm | [README](./setup/README.md) · [SCRIPTS](./setup/SCRIPTS.md) |
+| **training** | LoRA fine-tuning (분산 학습) | Kubeflow Training Operator, PyTorchJob, PEFT | [README](./training/README.md) |
+| **inference/basic** | 추론 엔드포인트 배포·테스트 | HyperPod Inference Operator, S3/FSx CSI, vLLM/TGI | [README](./inference/basic/README.md) |
+| **inference/kvcache…** | 고급 추론 성능 벤치마크 | KV Cache, Intelligent Routing | [README](./inference/kvcache-and-intelligent-routing/README.md) |
+| **task-governance** | 팀·작업 간 GPU 분배 | Kueue, ClusterQueue, 우선순위 | [README](./task-governance/README.md) |
 
-| 비교 항목 | Slurm (HPC 전통) | EKS (Kubernetes) |
-|----------|------------------|------------------|
-| **사용 사례** | 대규모 사전 훈련 (100B+ 모델) | 파인튜닝, 추론, MLOps 파이프라인 |
-| **작업 제출** | `sbatch script.sbatch` | `kubectl apply -f job.yaml` |
-| **리소스 관리** | Partition, QoS | Namespace, ResourceQuota |
-| **스케줄링** | Backfill, Gang Scheduling | Karpenter, Kueue |
-| **모니터링** | squeue, sacct | Prometheus, CloudWatch |
-| **컨테이너** | Pyxis+Enroot (선택) | 네이티브 지원 |
-| **자동 스케일링** | 제한적 | Karpenter로 동적 노드 추가/제거 |
-| **추론 배포** | 수동 설정 필요 | Inference Operator 자동화 |
-| **학습 곡선** | HPC 경험 필요 | Kubernetes 경험 활용 가능 |
-| **생태계** | MPI, NCCL, EFA | Kubeflow, KServe, Ray |
+---
+
+## 🏗️ 아키텍처 개요
+
+![HyperPod on EKS architecture](./docs/hyperpod-eks-architecture.png)
+
+**워크플로우 요약**
+- **학습**: `kubectl apply pytorchjob.yaml` → Training Operator가 worker Pod 분산 배치 → HuggingFace/FSx에서 데이터 로드 → LoRA 학습 → 결과 저장
+- **추론**: `kubectl apply inferenceendpointconfig.yaml` → Inference Operator가 모델을 S3/FSx에서 로드 → vLLM/TGI 서버 + Service 생성 → 호출
+
+---
+
+## 💡 자주 만나는 문제 (공통)
+
+이 핸즈온을 진행하며 실제로 자주 마주치는 이슈입니다. 상세 해결법은 각 폴더 README의 트러블슈팅 섹션에 있습니다.
+
+| 증상 | 원인·해결 요약 |
+|---|---|
+| `Unauthorized` / `ExpiredToken` | 워크샵 임시 자격증명(STS) 만료 → 갱신 후 `grant_eks_access.sh` 재실행 |
+| Pod가 계속 `Pending` | CPU/메모리 요청이 노드 **allocatable** 초과, 또는 GPU 부족 → 요청값/replicas 조정 |
+| `CrashLoopBackOff` (학습) | 라이브러리 버전 충돌(`transformers`/`peft`) → 버전 핀 고정 ([training/README](./training/README.md)) |
+| `conversion webhook ... no endpoints` | 추론 operator 애드온이 Kueue 의존 → Kueue 복구 후 애드온 재생성 ([inference/basic/README](./inference/basic/README.md)) |
+| 노드 슬롯 부족(`Too many pods`) | `maxPods`가 낮음 → `setup/4.ensure-workshop-capacity.sh` |
+
+---
+
+## 📚 참고
+
+- [`FEATURES.md`](./FEATURES.md) — HyperPod EKS란? EKS와의 차이, 복원력 기능 등 개념 설명
+- [SageMaker HyperPod 공식 문서](https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod.html)
+- [Kubeflow Training Operator](https://github.com/kubeflow/training-operator) · [PEFT](https://github.com/huggingface/peft) · [Kueue](https://kueue.sigs.k8s.io/)

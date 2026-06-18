@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1320" height="980" viewBox="0 0 1320 980" xmlns="http://www.w3.org/2000/svg" font-family="DejaVu Sans, Arial, sans-serif">
+  <defs>
+    <!-- page background -->
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfcff"/>
+      <stop offset="1" stop-color="#eef2f9"/>
+    </linearGradient>
+    <!-- header gradients -->
+    <linearGradient id="gTrain" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2f9e44"/><stop offset="1" stop-color="#37b24d"/>
+    </linearGradient>
+    <linearGradient id="gInfer" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e8590c"/><stop offset="1" stop-color="#f76707"/>
+    </linearGradient>
+    <linearGradient id="gMgmt" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7048e8"/><stop offset="1" stop-color="#845ef7"/>
+    </linearGradient>
+    <linearGradient id="gNode" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#495057"/><stop offset="1" stop-color="#5c636a"/>
+    </linearGradient>
+    <linearGradient id="gStore" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0c8599"/><stop offset="1" stop-color="#1098ad"/>
+    </linearGradient>
+    <linearGradient id="gTitle" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b5bdb"/><stop offset="1" stop-color="#7048e8"/>
+    </linearGradient>
+    <!-- soft drop shadow -->
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#1f2733" flood-opacity="0.16"/>
+    </filter>
+    <filter id="shadowSm" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1f2733" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+
+  <rect width="1320" height="980" fill="url(#page)"/>
+
+  <!-- ===== Title ===== -->
+  <text x="660" y="58" text-anchor="middle" font-size="38" font-weight="bold" fill="#1f2733">Amazon SageMaker HyperPod on EKS</text>
+  <text x="660" y="92" text-anchor="middle" font-size="19" fill="#5b6675" font-style="italic">Full model lifecycle &#8212; Training &#8594; Inference &#8212; on one managed GPU cluster</text>
+
+  <!-- ===== Outer: HyperPod ===== -->
+  <rect x="40" y="120" width="1240" height="730" rx="26" fill="#eef3ff" stroke="#3b5bdb" stroke-width="2.5" filter="url(#shadow)"/>
+  <circle cx="74" cy="158" r="7" fill="#3b5bdb"/>
+  <text x="92" y="165" font-size="22" font-weight="bold" fill="#3b5bdb">SageMaker HyperPod</text>
+  <text x="392" y="164" font-size="16" fill="#74809a" font-style="italic">managed:  auto node recovery  &#183;  deep health checks  &#183;  job auto-resume</text>
+
+  <!-- ===== EKS cluster ===== -->
+  <rect x="78" y="200" width="1164" height="492" rx="22" fill="#fff7ec" stroke="#f08c00" stroke-width="2.2"/>
+  <text x="112" y="242" font-size="22" font-weight="bold" fill="#b3640a">&#9729;  Amazon EKS Cluster</text>
+
+  <!-- ===== Training card ===== -->
+  <g filter="url(#shadowSm)">
+    <rect x="118" y="272" width="500" height="208" rx="18" fill="#e7f6ec" stroke="#2f9e44" stroke-width="2"/>
+    <path d="M118 290 a18 18 0 0 1 18 -18 h464 a18 18 0 0 1 18 18 v40 h-500 z" fill="url(#gTrain)"/>
+    <circle cx="158" cy="310" r="20" fill="#ffffff"/>
+    <text x="158" y="319" text-anchor="middle" font-size="22" fill="#2b8a3e">&#9654;</text>
+    <text x="192" y="304" font-size="25" font-weight="bold" fill="#ffffff">Training</text>
+    <text x="192" y="324" font-size="14" fill="#e9fbef" font-style="italic">eks/training</text>
+  </g>
+  <text x="150" y="372" font-size="18" fill="#1f2733">&#8226;  Kubeflow PyTorchJob</text>
+  <text x="150" y="406" font-size="18" fill="#1f2733">&#8226;  LoRA fine-tuning &#183; PEFT</text>
+  <text x="150" y="440" font-size="18" fill="#1f2733">&#8226;  distributed GPU workers</text>
+
+  <!-- ===== Inference card ===== -->
+  <g filter="url(#shadowSm)">
+    <rect x="702" y="272" width="500" height="208" rx="18" fill="#fdecea" stroke="#e8590c" stroke-width="2"/>
+    <path d="M702 290 a18 18 0 0 1 18 -18 h464 a18 18 0 0 1 18 18 v40 h-500 z" fill="url(#gInfer)"/>
+    <circle cx="742" cy="310" r="20" fill="#ffffff"/>
+    <text x="742" y="319" text-anchor="middle" font-size="22" fill="#d9480f">&#10039;</text>
+    <text x="776" y="304" font-size="25" font-weight="bold" fill="#ffffff">Inference</text>
+    <text x="776" y="324" font-size="14" fill="#fdece6" font-style="italic">eks/inference</text>
+  </g>
+  <text x="734" y="372" font-size="18" fill="#1f2733">&#8226;  HyperPod Inference Operator</text>
+  <text x="734" y="406" font-size="18" fill="#1f2733">&#8226;  vLLM / TGI / DJL</text>
+  <text x="734" y="440" font-size="18" fill="#1f2733">&#8226;  S3 / FSx model source</text>
+
+  <!-- model arrow training -> inference -->
+  <line x1="618" y1="376" x2="700" y2="376" stroke="#495057" stroke-width="3" marker-end="url(#arrowGray)"/>
+  <text x="659" y="366" text-anchor="middle" font-size="15" font-weight="bold" fill="#495057">model</text>
+
+  <!-- ===== Managed components band ===== -->
+  <g filter="url(#shadowSm)">
+    <rect x="118" y="506" width="1084" height="64" rx="14" fill="#f3ecfe" stroke="#7048e8" stroke-width="1.8"/>
+  </g>
+  <rect x="118" y="506" width="10" height="64" rx="5" fill="url(#gMgmt)"/>
+  <text x="148" y="535" font-size="20" font-weight="bold" fill="#7048e8">&#9881;  Managed components</text>
+  <text x="148" y="558" font-size="15.5" fill="#5b6675">Training Operator  &#183;  Inference Operator  &#183;  Task Governance / Kueue  &#183;  Health Monitoring Agent</text>
+
+  <!-- ===== GPU worker nodes band ===== -->
+  <g filter="url(#shadowSm)">
+    <rect x="118" y="592" width="1084" height="64" rx="14" fill="#eef1f5" stroke="#495057" stroke-width="1.8"/>
+  </g>
+  <rect x="118" y="592" width="10" height="64" rx="5" fill="url(#gNode)"/>
+  <text x="148" y="621" font-size="20" font-weight="bold" fill="#343a40">&#9638;  GPU Worker Nodes</text>
+  <text x="148" y="644" font-size="15.5" fill="#5b6675">ml.g5 / g6 / p5  &#183;  NVIDIA Device Plugin  &#183;  EFA network  &#183;  S3 / FSx CSI mounts</text>
+
+  <!-- scheduled-onto arrows (dashed) -->
+  <line x1="368" y1="480" x2="368" y2="590" stroke="#2b8a3e" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#arrowGreen)"/>
+  <line x1="952" y1="480" x2="952" y2="590" stroke="#d9480f" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#arrowOrange)"/>
+
+  <!-- ===== Storage layer ===== -->
+  <g filter="url(#shadowSm)">
+    <rect x="78" y="708" width="1164" height="68" rx="16" fill="#e6fcfb" stroke="#0c8599" stroke-width="2"/>
+  </g>
+  <rect x="78" y="708" width="10" height="68" rx="5" fill="url(#gStore)"/>
+  <text x="110" y="738" font-size="20" font-weight="bold" fill="#0c8599">&#9636;  Storage Layer</text>
+  <text x="110" y="762" font-size="15.5" fill="#5b6675">FSx for Lustre  (shared high-performance)        S3 + CSI driver  (object store)        EBS  (persistent volumes)</text>
+
+  <!-- nodes <-> storage arrow -->
+  <line x1="660" y1="656" x2="660" y2="706" stroke="#0c8599" stroke-width="2.6" marker-start="url(#arrowTealS)" marker-end="url(#arrowTeal)"/>
+  <text x="672" y="686" font-size="15" font-weight="bold" fill="#0c8599">mount / load</text>
+
+  <!-- ===== side stages ===== -->
+  <g filter="url(#shadowSm)">
+    <rect x="40" y="876" width="600" height="74" rx="16" fill="#eef1f5" stroke="#868e96" stroke-width="1.8"/>
+  </g>
+  <circle cx="78" cy="913" r="16" fill="#3b5bdb"/>
+  <text x="78" y="920" text-anchor="middle" font-size="18" font-weight="bold" fill="#ffffff">1</text>
+  <text x="104" y="908" font-size="19" font-weight="bold" fill="#343a40">eks/setup</text>
+  <text x="104" y="932" font-size="15" fill="#5b6675">access &#183; validate &#183; maxPods &#183; tools</text>
+
+  <g filter="url(#shadowSm)">
+    <rect x="680" y="876" width="600" height="74" rx="16" fill="#eef1f5" stroke="#868e96" stroke-width="1.8"/>
+  </g>
+  <circle cx="718" cy="913" r="16" fill="#3b5bdb"/>
+  <text x="718" y="920" text-anchor="middle" font-size="18" font-weight="bold" fill="#ffffff">4</text>
+  <text x="744" y="908" font-size="19" font-weight="bold" fill="#343a40">eks/task-governance</text>
+  <text x="744" y="932" font-size="15" fill="#5b6675">Kueue queues &#183; priority &#183; quota</text>
+
+  <!-- ===== arrow markers ===== -->
+  <defs>
+    <marker id="arrowGray" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0 0 L9 5 L0 10 z" fill="#495057"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0 0 L9 5 L0 10 z" fill="#2b8a3e"/></marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0 0 L9 5 L0 10 z" fill="#d9480f"/></marker>
+    <marker id="arrowTeal" markerWidth="10" markerHeight="10" refX="7" refY="5" orient="auto"><path d="M0 0 L9 5 L0 10 z" fill="#0c8599"/></marker>
+    <marker id="arrowTealS" markerWidth="10" markerHeight="10" refX="2" refY="5" orient="auto"><path d="M9 0 L0 5 L9 10 z" fill="#0c8599"/></marker>
+  </defs>
+</svg>

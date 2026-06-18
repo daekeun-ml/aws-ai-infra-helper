@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1320" height="912" viewBox="0 0 1320 912" xmlns="http://www.w3.org/2000/svg" font-family="DejaVu Sans, Arial, sans-serif">
+  <defs>
+    <linearGradient id="np_page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfcff"/><stop offset="1" stop-color="#eef2f9"/>
+    </linearGradient>
+    <linearGradient id="np_eks" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b5bdb"/><stop offset="1" stop-color="#5c7cfa"/>
+    </linearGradient>
+    <linearGradient id="np_hp" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f08c00"/><stop offset="1" stop-color="#f7a52b"/>
+    </linearGradient>
+    <linearGradient id="np_user" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2f9e44"/><stop offset="1" stop-color="#40c057"/>
+    </linearGradient>
+    <filter id="np_sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#1f2733" flood-opacity="0.16"/>
+    </filter>
+    <filter id="np_shsm" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1f2733" flood-opacity="0.13"/>
+    </filter>
+    <marker id="np_aBlue" markerWidth="11" markerHeight="11" refX="7" refY="5" orient="auto"><path d="M0 0 L9 5 L0 10 z" fill="#3b5bdb"/></marker>
+    <marker id="np_aBlueS" markerWidth="11" markerHeight="11" refX="2" refY="5" orient="auto"><path d="M9 0 L0 5 L9 10 z" fill="#3b5bdb"/></marker>
+    <marker id="np_aGreen" markerWidth="11" markerHeight="11" refX="7" refY="5" orient="auto"><path d="M0 0 L9 5 L0 10 z" fill="#2f9e44"/></marker>
+    <marker id="np_aGreenS" markerWidth="11" markerHeight="11" refX="2" refY="5" orient="auto"><path d="M9 0 L0 5 L9 10 z" fill="#2f9e44"/></marker>
+  </defs>
+
+  <rect width="1320" height="912" fill="url(#np_page)"/>
+
+  <!-- Title -->
+  <text x="660" y="54" text-anchor="middle" font-size="34" font-weight="bold" fill="#1f2733">HyperPod on EKS &#8212; Network Architecture</text>
+  <text x="660" y="86" text-anchor="middle" font-size="18" fill="#5b6675" font-style="italic">3 VPCs &#183; 1-to-1 EKS-control-plane &#8596; HyperPod-compute &#183; connected by cross-account ENIs</text>
+
+  <!-- ===== AWS-managed account (dashed container) ===== -->
+  <rect x="40" y="116" width="775" height="668" rx="20" fill="none" stroke="#adb5bd" stroke-width="2" stroke-dasharray="9 6"/>
+  <text x="60" y="142" font-size="16" font-weight="bold" fill="#868e96">AWS-managed account  &#183;  VPC infrastructure is hidden from you</text>
+
+  <!-- EKS VPC (control plane) -->
+  <g filter="url(#np_sh)">
+    <rect x="68" y="160" width="712" height="180" rx="16" fill="#eef3ff" stroke="#3b5bdb" stroke-width="2.2"/>
+  </g>
+  <rect x="68" y="160" width="712" height="40" rx="16" fill="url(#np_eks)"/>
+  <rect x="68" y="184" width="712" height="16" fill="#3b5bdb"/>
+  <text x="90" y="187" font-size="20" font-weight="bold" fill="#ffffff">&#9729;  Amazon EKS VPC  &#183;  AWS-managed</text>
+  <g filter="url(#np_shsm)">
+    <rect x="248" y="226" width="354" height="100" rx="12" fill="#ffffff" stroke="#3b5bdb" stroke-width="1.8"/>
+  </g>
+  <text x="425" y="258" text-anchor="middle" font-size="19" font-weight="bold" fill="#3b5bdb">Kubernetes Control Plane</text>
+  <text x="425" y="283" text-anchor="middle" font-size="15" fill="#5b6675">managed API server (HA, multi-AZ)</text>
+  <text x="425" y="305" text-anchor="middle" font-size="15" fill="#5b6675">etcd &#183; scheduler &#183; controllers</text>
+
+  <!-- HyperPod VPC (compute) -->
+  <g filter="url(#np_sh)">
+    <rect x="68" y="424" width="712" height="338" rx="16" fill="#fff7ec" stroke="#f08c00" stroke-width="2.2"/>
+  </g>
+  <rect x="68" y="424" width="712" height="40" rx="16" fill="url(#np_hp)"/>
+  <rect x="68" y="448" width="712" height="16" fill="#f08c00"/>
+  <text x="90" y="451" font-size="20" font-weight="bold" fill="#ffffff">&#9638;  HyperPod VPC  &#183;  AWS-managed (compute)</text>
+
+  <!-- "visible via kubectl" wrapper around the nodes -->
+  <rect x="88" y="478" width="420" height="180" rx="14" fill="none" stroke="#3b5bdb" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <g>
+    <rect x="300" y="468" width="190" height="24" rx="12" fill="#3b5bdb"/>
+    <text x="395" y="485" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#ffffff">&#128065; visible via kubectl</text>
+  </g>
+
+  <!-- worker nodes -->
+  <g filter="url(#np_shsm)">
+    <rect x="100" y="492" width="190" height="152" rx="12" fill="#ffffff" stroke="#f08c00" stroke-width="1.6"/>
+  </g>
+  <text x="195" y="523" text-anchor="middle" font-size="17" font-weight="bold" fill="#b3640a">GPU Node</text>
+  <text x="195" y="548" text-anchor="middle" font-size="13.5" fill="#5b6675">ml.g5 / g6 / p5</text>
+  <text x="195" y="570" text-anchor="middle" font-size="13.5" fill="#5b6675">kubelet &#183; containerd</text>
+  <text x="195" y="592" text-anchor="middle" font-size="13.5" fill="#5b6675">NVIDIA plugin &#183; EFA</text>
+  <text x="195" y="618" text-anchor="middle" font-size="13.5" fill="#2b8a3e" font-weight="bold">+ Health agent</text>
+
+  <g filter="url(#np_shsm)">
+    <rect x="305" y="492" width="190" height="152" rx="12" fill="#ffffff" stroke="#f08c00" stroke-width="1.6"/>
+  </g>
+  <text x="400" y="523" text-anchor="middle" font-size="17" font-weight="bold" fill="#b3640a">GPU Node</text>
+  <text x="400" y="548" text-anchor="middle" font-size="13.5" fill="#5b6675">ml.g5 / g6 / p5</text>
+  <text x="400" y="570" text-anchor="middle" font-size="13.5" fill="#5b6675">kubelet &#183; containerd</text>
+  <text x="400" y="592" text-anchor="middle" font-size="13.5" fill="#5b6675">NVIDIA plugin &#183; EFA</text>
+  <text x="400" y="618" text-anchor="middle" font-size="13.5" fill="#2b8a3e" font-weight="bold">+ Health agent</text>
+
+  <!-- green ENI label card (in open right area of HyperPod VPC) -->
+  <g filter="url(#np_shsm)">
+    <rect x="520" y="516" width="240" height="58" rx="14" fill="#e6f8ec" stroke="#2f9e44" stroke-width="1.6"/>
+  </g>
+  <text x="640" y="540" text-anchor="middle" font-size="14" font-weight="bold" fill="#2b8a3e">cross-account ENI</text>
+  <text x="640" y="561" text-anchor="middle" font-size="12.5" fill="#5b6675">&#8594; FSx &#183; S3 &#183; ECR &#183; CloudWatch</text>
+
+  <text x="424" y="704" text-anchor="middle" font-size="14.5" fill="#b3640a" font-weight="bold">1-to-1 mapping:  one EKS cluster (control plane)  &#8596;  one HyperPod cluster (these nodes)</text>
+  <text x="424" y="728" text-anchor="middle" font-size="13.5" fill="#74809a" font-style="italic">nodes are reachable via kubectl / SSM / SSH</text>
+
+  <!-- ===== Blue ENI: control plane <-> nodes ===== -->
+  <!-- vertical double arrow at x=170, ending at VPC edges (not crossing headers) -->
+  <line x1="170" y1="326" x2="170" y2="490" stroke="#3b5bdb" stroke-width="3" stroke-dasharray="2 0" marker-start="url(#np_aBlueS)" marker-end="url(#np_aBlue)"/>
+  <!-- label card sits in the clear gap between the two VPCs (340-424) -->
+  <g filter="url(#np_shsm)">
+    <rect x="232" y="350" width="232" height="56" rx="14" fill="#e7ecff" stroke="#3b5bdb" stroke-width="1.6"/>
+  </g>
+  <text x="348" y="374" text-anchor="middle" font-size="14" font-weight="bold" fill="#3b5bdb">cross-account ENI</text>
+  <text x="348" y="395" text-anchor="middle" font-size="12.5" fill="#5b6675">nodes register to EKS control plane</text>
+
+  <!-- ===== Customer account (dashed container) ===== -->
+  <rect x="845" y="116" width="435" height="668" rx="20" fill="none" stroke="#40c057" stroke-width="2" stroke-dasharray="9 6"/>
+  <text x="865" y="142" font-size="16" font-weight="bold" fill="#2b8a3e">Your AWS account</text>
+
+  <g filter="url(#np_sh)">
+    <rect x="872" y="160" width="400" height="562" rx="16" fill="#e7f6ec" stroke="#2f9e44" stroke-width="2.2"/>
+  </g>
+  <rect x="872" y="160" width="400" height="40" rx="16" fill="url(#np_user)"/>
+  <rect x="872" y="184" width="400" height="16" fill="#2f9e44"/>
+  <text x="894" y="187" font-size="20" font-weight="bold" fill="#ffffff">&#127968;  SageMaker User VPC</text>
+
+  <!-- customer resources -->
+  <g filter="url(#np_shsm)"><rect x="908" y="238" width="328" height="74" rx="12" fill="#ffffff" stroke="#2f9e44" stroke-width="1.6"/></g>
+  <text x="1072" y="270" text-anchor="middle" font-size="17" font-weight="bold" fill="#2b8a3e">FSx for Lustre</text>
+  <text x="1072" y="294" text-anchor="middle" font-size="13.5" fill="#5b6675">shared high-performance storage</text>
+
+  <g filter="url(#np_shsm)"><rect x="908" y="332" width="328" height="64" rx="12" fill="#ffffff" stroke="#2f9e44" stroke-width="1.6"/></g>
+  <text x="1072" y="362" text-anchor="middle" font-size="17" font-weight="bold" fill="#2b8a3e">Amazon S3</text>
+  <text x="1072" y="383" text-anchor="middle" font-size="13.5" fill="#5b6675">model / data (via CSI)</text>
+
+  <g filter="url(#np_shsm)"><rect x="908" y="416" width="328" height="64" rx="12" fill="#ffffff" stroke="#2f9e44" stroke-width="1.6"/></g>
+  <text x="1072" y="446" text-anchor="middle" font-size="17" font-weight="bold" fill="#2b8a3e">Amazon ECR</text>
+  <text x="1072" y="467" text-anchor="middle" font-size="13.5" fill="#5b6675">container images</text>
+
+  <g filter="url(#np_shsm)"><rect x="908" y="500" width="328" height="64" rx="12" fill="#ffffff" stroke="#2f9e44" stroke-width="1.6"/></g>
+  <text x="1072" y="530" text-anchor="middle" font-size="17" font-weight="bold" fill="#2b8a3e">CloudWatch</text>
+  <text x="1072" y="551" text-anchor="middle" font-size="13.5" fill="#5b6675">logs &#183; metrics &#183; Container Insights</text>
+
+  <text x="1072" y="624" text-anchor="middle" font-size="13.5" fill="#2b8a3e" font-weight="bold">resources stay in YOUR account / VPC</text>
+  <text x="1072" y="648" text-anchor="middle" font-size="13" fill="#74809a" font-style="italic">you provision VPC &#183; subnets &#183; security groups</text>
+
+  <!-- green ENI arrow: from label card across the account boundary into customer VPC -->
+  <line x1="762" y1="545" x2="906" y2="455" stroke="#2f9e44" stroke-width="3" marker-start="url(#np_aGreenS)" marker-end="url(#np_aGreen)"/>
+
+  <!-- visibility legend -->
+  <g filter="url(#np_shsm)">
+    <rect x="300" y="800" width="720" height="64" rx="14" fill="#ffffff" stroke="#ced4da" stroke-width="1.4"/>
+  </g>
+  <circle cx="330" cy="822" r="6" fill="#3b5bdb"/>
+  <text x="344" y="827" font-size="13.5" fill="#1f2733"><tspan font-weight="bold" fill="#3b5bdb">Visible (kubectl / EKS console):</tspan>  Kubernetes objects &#8212; nodes, pods, services, jobs.</text>
+  <circle cx="330" cy="846" r="6" fill="#adb5bd"/>
+  <text x="344" y="851" font-size="13.5" fill="#1f2733"><tspan font-weight="bold" fill="#868e96">Hidden (AWS-managed):</tspan>  the VPC infrastructure itself &#8212; control-plane hosts, the VPCs, the ENIs.</text>
+
+  <!-- footer note -->
+  <text x="660" y="894" text-anchor="middle" font-size="12.5" fill="#868e96" font-style="italic">Source: AWS docs &#8212; &#8220;Orchestrating SageMaker HyperPod clusters with Amazon EKS&#8221; &#183; AWS ML Blog (EKS support in HyperPod)</text>
+</svg>
