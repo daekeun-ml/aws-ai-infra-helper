@@ -18,19 +18,24 @@ fi
 # Step 1: Update environment variables for FSX copy job
 echo "📝 Step 1: Setting up FSX copy job..."
 
-# Extract AWS credentials from the named profile.
+# Extract AWS credentials from the named profile for the copy job.
 # The copy job runs as a plain pod (no IRSA), so it needs static keys injected.
-AWS_ACCESS_KEY_ID=$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)
-AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key --profile "$PROFILE" 2>/dev/null)
+# IMPORTANT: store these in COPY_* variables, NOT the standard AWS_ACCESS_KEY_ID
+# / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN names. Overwriting those would
+# poison this shell's credentials, so the later `kubectl` (which calls
+# `aws eks get-token`) would use the profile creds instead of the active ones
+# and fail with Unauthorized — breaking instance-type auto-detection below.
+COPY_ACCESS_KEY_ID=$(aws configure get aws_access_key_id --profile "$PROFILE" 2>/dev/null)
+COPY_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key --profile "$PROFILE" 2>/dev/null)
 # Temporary (STS) credentials — access keys starting with "ASIA", as used by
 # Workshop Studio / assumed roles — are INVALID without the session token.
-AWS_SESSION_TOKEN=$(aws configure get aws_session_token --profile "$PROFILE" 2>/dev/null)
-AWS_DEFAULT_REGION=$(aws configure get region --profile "$PROFILE" 2>/dev/null)
+COPY_SESSION_TOKEN=$(aws configure get aws_session_token --profile "$PROFILE" 2>/dev/null)
+COPY_REGION=$(aws configure get region --profile "$PROFILE" 2>/dev/null)
 
 # Fail fast if the profile has no static credentials. Otherwise empty values
 # get baked into the YAML and the copy job fails later with an opaque error.
 # (e.g. SageMaker/IAM-role environments have no 'default' credentials profile.)
-if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+if [ -z "$COPY_ACCESS_KEY_ID" ] || [ -z "$COPY_SECRET_ACCESS_KEY" ]; then
     echo "❌ [ERROR] Could not read static credentials from AWS profile '$PROFILE'."
     echo "   The FSX copy job needs an access key + secret key baked into the YAML."
     echo "   Options:"
@@ -41,7 +46,7 @@ if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
 fi
 
 # Temporary credentials (ASIA...) are useless without a session token.
-if [[ "$AWS_ACCESS_KEY_ID" == ASIA* ]] && [ -z "$AWS_SESSION_TOKEN" ]; then
+if [[ "$COPY_ACCESS_KEY_ID" == ASIA* ]] && [ -z "$COPY_SESSION_TOKEN" ]; then
     echo "❌ [ERROR] Profile '$PROFILE' has TEMPORARY credentials (key starts with ASIA)"
     echo "   but no aws_session_token. The copy job would fail with 'InvalidAccessKeyId'."
     echo "   Use a profile whose aws_session_token is set, or refresh the credentials."
@@ -49,11 +54,11 @@ if [[ "$AWS_ACCESS_KEY_ID" == ASIA* ]] && [ -z "$AWS_SESSION_TOKEN" ]; then
 fi
 
 # Region: fall back to the active env/config region if the profile has none.
-if [ -z "$AWS_DEFAULT_REGION" ]; then
-    AWS_DEFAULT_REGION=$(aws configure get region 2>/dev/null)
-    [ -z "$AWS_DEFAULT_REGION" ] && AWS_DEFAULT_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
+if [ -z "$COPY_REGION" ]; then
+    COPY_REGION=$(aws configure get region 2>/dev/null)
+    [ -z "$COPY_REGION" ] && COPY_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 fi
-if [ -z "$AWS_DEFAULT_REGION" ]; then
+if [ -z "$COPY_REGION" ]; then
     echo "❌ [ERROR] Could not determine AWS region (profile '$PROFILE' has none, and"
     echo "   neither AWS_REGION nor a default config region is set)."
     echo "   Set it, e.g.:  export AWS_REGION=us-west-2"
@@ -72,25 +77,34 @@ sed_inplace() {
 # Session token can contain '/', '+', '=' (base64) but never '|', so use '|'
 # as the sed delimiter. Handle the token line specially: keep+fill it for
 # temporary creds, or delete it entirely for permanent (AKIA) keys.
-if [ -n "$AWS_SESSION_TOKEN" ]; then
-    sed_inplace "s|<YOUR_SESSION_TOKEN>|$AWS_SESSION_TOKEN|g" copy_to_fsx_lustre.yaml
+if [ -n "$COPY_SESSION_TOKEN" ]; then
+    sed_inplace "s|<YOUR_SESSION_TOKEN>|$COPY_SESSION_TOKEN|g" copy_to_fsx_lustre.yaml
 else
     # Remove the AWS_SESSION_TOKEN env entry (its name line + the value line).
     sed_inplace "/name: AWS_SESSION_TOKEN/{N;d;}" copy_to_fsx_lustre.yaml
 fi
 
-sed_inplace "s|<YOUR_ACCESS_KEY_ID>|$AWS_ACCESS_KEY_ID|g" copy_to_fsx_lustre.yaml
-sed_inplace "s|<YOUR_SECRET_ACCESS_KEY>|$AWS_SECRET_ACCESS_KEY|g" copy_to_fsx_lustre.yaml
-sed_inplace "s|<YOUR_AWS_REGION>|$AWS_DEFAULT_REGION|g" copy_to_fsx_lustre.yaml
+sed_inplace "s|<YOUR_ACCESS_KEY_ID>|$COPY_ACCESS_KEY_ID|g" copy_to_fsx_lustre.yaml
+sed_inplace "s|<YOUR_SECRET_ACCESS_KEY>|$COPY_SECRET_ACCESS_KEY|g" copy_to_fsx_lustre.yaml
+sed_inplace "s|<YOUR_AWS_REGION>|$COPY_REGION|g" copy_to_fsx_lustre.yaml
 
 echo "✅ FSX copy job configuration created: copy_to_fsx_lustre.yaml"
 
 # Step 2: Create inference deployment
 echo "📝 Step 2: Setting up inference deployment..."
 
-# Auto-detect instance type from EKS cluster
+# Auto-detect instance type from EKS cluster.
+# Allow an explicit override via env (INSTANCE_TYPE=ml.g5.2xlarge ./2...sh).
 echo "🔍 Auto-detecting instance type from EKS cluster..."
-INSTANCE_TYPE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null)
+if [ -z "${INSTANCE_TYPE:-}" ]; then
+    # Pick the instance-type label from a READY GPU node. Looking only at
+    # .items[0] is fragile: during node replacement the first node may be
+    # NotReady or not yet labelled, which silently yields an empty value.
+    INSTANCE_TYPE=$(kubectl get nodes \
+        -l node.kubernetes.io/instance-type \
+        -o jsonpath='{range .items[*]}{.metadata.labels.node\.kubernetes\.io/instance-type}{"\n"}{end}' 2>/dev/null \
+        | grep -v '^$' | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
+fi
 
 # Auto-detect FSX filesystem ID from environment variable (already set at script start)
 echo "🔍 Auto-detecting FSX filesystem ID from PV..."
@@ -100,12 +114,20 @@ if [ -n "$FSX_FILESYSTEM" ]; then
     echo "✅ FSX Filesystem ID: $FSX_FILESYSTEM"
 fi
 
-# Check if we got the instance type
+# Fail loudly instead of guessing — a wrong instance type produces wrong
+# cpu/memory requests (e.g. assuming g5.8xlarge on a g5.2xlarge node makes
+# the pod unschedulable). Let the user pin it explicitly.
 if [ -z "$INSTANCE_TYPE" ]; then
-    echo "⚠️  Warning: Could not auto-detect instance type from EKS cluster"
-    INSTANCE_TYPE="ml.g5.8xlarge"
-    echo "Using default instance type: $INSTANCE_TYPE"
+    echo "❌ [ERROR] Could not auto-detect the node instance type."
+    echo "   'kubectl get nodes' returned no labelled node. Common causes:"
+    echo "     • AWS credentials expired → kubectl is Unauthorized"
+    echo "       (check: kubectl get nodes ; aws sts get-caller-identity)"
+    echo "     • nodes are still provisioning / NotReady"
+    echo "   Fix the access, or pin the type explicitly:"
+    echo "     INSTANCE_TYPE=ml.g5.2xlarge ./2.prepare_fsx_inference.sh"
+    exit 1
 fi
+echo "✅ Instance type: $INSTANCE_TYPE"
 
 # Check if we got the FSX filesystem ID
 if [ -z "$FSX_FILESYSTEM" ]; then

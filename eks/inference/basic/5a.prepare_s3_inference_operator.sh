@@ -17,19 +17,34 @@ fi
 if [ -z "$AWS_REGION" ]; then
     AWS_REGION=$(aws configure get region $PROFILE_OPT 2>/dev/null)
 fi
-INSTANCE_TYPE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null)
+# Auto-detect instance type from a READY, labelled node (env override allowed).
+# .items[0] alone is fragile: during node replacement the first node may be
+# NotReady/unlabelled and silently yield an empty value.
+if [ -z "${INSTANCE_TYPE:-}" ]; then
+    INSTANCE_TYPE=$(kubectl get nodes \
+        -l node.kubernetes.io/instance-type \
+        -o jsonpath='{range .items[*]}{.metadata.labels.node\.kubernetes\.io/instance-type}{"\n"}{end}' 2>/dev/null \
+        | grep -v '^$' | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
+fi
 
 if [ -z "$AWS_REGION" ]; then
     echo "❌ AWS_REGION is not set. Set it in ../../setup/env_vars, the AWS profile, or export AWS_REGION."
     exit 1
 fi
 
-# Check if we got the instance type
+# Fail loudly instead of guessing — a wrong instance type yields wrong
+# cpu/memory requests and an unschedulable pod.
 if [ -z "$INSTANCE_TYPE" ]; then
-    echo "⚠️  Warning: Could not auto-detect instance type from EKS cluster"
-    INSTANCE_TYPE="ml.g5.8xlarge"
-    echo "Using default instance type: $INSTANCE_TYPE"
+    echo "❌ [ERROR] Could not auto-detect the node instance type."
+    echo "   'kubectl get nodes' returned no labelled node. Common causes:"
+    echo "     • AWS credentials expired → kubectl is Unauthorized"
+    echo "       (check: kubectl get nodes ; aws sts get-caller-identity)"
+    echo "     • nodes are still provisioning / NotReady"
+    echo "   Fix the access, or pin the type explicitly:"
+    echo "     INSTANCE_TYPE=ml.g5.2xlarge ./5a.prepare_s3_inference_operator.sh"
+    exit 1
 fi
+echo "✅ Instance type: $INSTANCE_TYPE"
 
 # Check if S3_BUCKET_NAME environment variable is set
 if [ -z "$S3_BUCKET_NAME" ]; then
