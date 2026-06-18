@@ -1,5 +1,134 @@
 # HyperPod Inference Endpoint 배포 및 테스트 가이드
 
+<details>
+<summary>📖 <b>처음이신가요? 기본 용어 먼저 보기 (클릭해서 펼치기)</b></summary>
+
+<br>
+
+이 가이드에 자주 나오는 용어들을 쉽게 정리했습니다. 이미 익숙하다면 건너뛰어도 됩니다.
+
+### 인프라 / 쿠버네티스 기본
+
+| 용어 | 쉬운 설명 |
+|---|---|
+| **EKS** (Elastic Kubernetes Service) | AWS가 관리해 주는 **쿠버네티스(Kubernetes)** 클러스터. 컨테이너(앱)를 여러 서버에 띄우고 관리하는 시스템입니다. |
+| **HyperPod** | SageMaker의 대규모 ML 학습·추론용 인프라. 여기서는 **EKS 기반 HyperPod** 클러스터를 사용합니다. |
+| **노드(Node)** | 실제 작업이 도는 서버(EC2 인스턴스) 1대. 예: `ml.g5.2xlarge`(GPU 1개 달린 서버). |
+| **Pod** | 쿠버네티스에서 컨테이너를 실행하는 **가장 작은 단위**. 보통 "앱 1개 = Pod 1개"로 생각하면 됩니다. |
+| **Deployment** | Pod를 몇 개 띄울지·어떻게 유지할지 정의하는 리소스. Pod가 죽으면 자동으로 다시 띄웁니다. |
+| **Service** | 여러 Pod에 **안정적인 주소(이름)**를 주는 리소스. Pod IP는 재시작 시 바뀌지만 Service 이름은 그대로입니다. |
+| **DaemonSet** | **모든 노드마다 하나씩** 띄우는 Pod (예: GPU 드라이버, 스토리지 드라이버). |
+| **kubectl** | 쿠버네티스를 조작하는 명령줄 도구. (`kubectl get pods` = Pod 목록 보기) |
+| **kubeconfig** | 내 PC가 어느 클러스터에 어떻게 접속할지 적힌 설정 파일. |
+
+### 스토리지 / 모델
+
+| 용어 | 쉬운 설명 |
+|---|---|
+| **S3** | AWS의 오브젝트 스토리지(파일 저장소). 여기서는 **모델 가중치**를 보관합니다. |
+| **FSx for Lustre** | 고성능 공유 파일시스템. S3보다 빠른 파일 접근이 필요할 때 모델을 올려 둡니다. |
+| **CSI 드라이버** (Container Storage Interface) | Pod가 S3·FSx 같은 외부 스토리지를 **디스크처럼 마운트**할 수 있게 해주는 플러그인. |
+| **PV / PVC** (PersistentVolume / Claim) | PV는 "실제 저장공간", PVC는 "그 저장공간을 쓰겠다는 신청서". Pod는 PVC를 통해 볼륨을 씁니다. |
+
+### 권한 / 인증
+
+| 용어 | 쉬운 설명 |
+|---|---|
+| **IAM Role** | AWS 리소스(S3 등)에 접근할 권한 묶음. 사용자나 서버에 부여합니다. |
+| **IRSA** (IAM Roles for Service Accounts) | **쿠버네티스 서비스어카운트**에 IAM Role을 연결하는 방식. OIDC를 사용하며, Pod 단위로 **권한을 좁게** 줄 수 있어 안전합니다. |
+| **Pod Identity** | IRSA와 비슷하게 Pod에 IAM 권한을 주는 더 최신 방식 (OIDC 설정 없이 더 간단). |
+| **임시 자격증명(STS)** | 워크샵 환경에서 주는 **수명이 짧은** 키. 액세스 키가 `ASIA...`로 시작하며 **`session_token`이 반드시 함께** 필요합니다. (영구 키는 `AKIA...`) |
+
+### 추론 / 모델 서빙
+
+| 용어 | 쉬운 설명 |
+|---|---|
+| **Inference Endpoint** | 학습된 모델을 **API로 호출**할 수 있게 띄운 추론 서버. |
+| **InferenceEndpointConfig** | HyperPod **inference operator**가 읽는 커스텀 리소스(CRD). 이걸 만들면 operator가 추론 서버 배포를 알아서 구성합니다. |
+| **Operator** | 특정 리소스(CRD)를 감시하다가 자동으로 배포·관리해 주는 쿠버네티스 컨트롤러. |
+| **CRD** (Custom Resource Definition) | 쿠버네티스에 **새로운 리소스 종류**를 추가하는 확장. `InferenceEndpointConfig`가 그 예입니다. |
+| **vLLM / TGI / DJL** | LLM을 빠르게 서빙하는 추론 엔진/서버. 컨테이너 이미지 안에 들어 있습니다. |
+| **GPU 슬롯 / maxPods** | 노드 1대가 받을 수 있는 Pod 개수 한도. 작은 인스턴스는 이 한도가 낮아 배포가 막힐 수 있습니다. |
+
+</details>
+
+<details>
+<summary>🤔 <b>이 절차는 왜 필요한가? (전체 흐름과 각 단계의 이유)</b></summary>
+
+<br>
+
+스크립트를 그냥 따라 하기 전에, **무엇을 하려는 것이고 왜 이런 단계들이 필요한지** 이해하면 문제가 생겼을 때 훨씬 쉽게 해결할 수 있습니다.
+
+### 🎯 최종 목표
+
+> **S3나 FSx에 저장된 LLM 모델 가중치를, GPU가 달린 Pod에 올려서 "API로 호출 가능한 추론 서버"로 띄우는 것.**
+
+이 목표를 이루려면 아래 5가지가 순서대로 갖춰져야 합니다. 각 스크립트는 이 중 하나씩을 담당합니다.
+
+### 1️⃣ 클러스터에 접근할 권한 — `1.grant_eks_access.sh`
+
+**왜?** EKS 클러스터는 보안상 **만든 사람 외에는 `kubectl` 접근을 기본 차단**합니다. 그래서 내 IAM 신원(사용자/역할)을 클러스터의 **Access Entry**로 등록하고 관리자 정책을 연결해야 `kubectl get nodes`조차 동작합니다.
+→ 이걸 안 하면: `error: You must be logged in to the server (Unauthorized)`
+
+### 2️⃣ 모델을 외부 스토리지에 보관 — `3.copy_to_s3.sh` 또는 `2.prepare_fsx_inference.sh`
+
+**왜 모델을 컨테이너 이미지에 안 넣고 따로 두나?** LLM 가중치는 수 GB~수십 GB로 **너무 커서** 컨테이너 이미지에 넣으면 이미지가 비대해지고 빌드·배포가 느려집니다. 그래서 모델은 **S3(오브젝트 스토리지)나 FSx(고성능 파일시스템)** 에 두고, Pod가 시작될 때 **마운트하거나 다운로드**합니다.
+- **S3**: 저렴하고 간단. 시작 시 다운로드(또는 스트리밍).
+- **FSx for Lustre**: S3보다 빠른 파일 접근. 모델을 자주/빠르게 읽어야 할 때.
+
+### 3️⃣ Pod가 그 스토리지를 읽을 수 있게 — `4.addon_s3_csi.sh` / `4.fix_s3_csi_credentials.sh`
+
+**왜 별도 단계가?** Pod가 S3/FSx를 **로컬 디스크처럼 마운트**하려면 두 가지가 필요합니다:
+1. **CSI 드라이버**(스토리지 플러그인)가 클러스터에 설치되어 있어야 하고,
+2. 그 드라이버가 S3에 접근할 **AWS 권한**이 있어야 합니다.
+
+권한을 주는 방식이 환경에 따라 다릅니다:
+- **`4.fix_s3_csi_credentials.sh`** → **IRSA(OIDC)** 방식. 서비스어카운트에 좁은 권한의 IAM Role 연결 (정식 계정·안전).
+- **`4.addon_s3_csi.sh`** → **Pod Identity** 방식. 더 간단한 최신 권한 연결.
+
+→ 이 권한이 없으면: `InvalidAccessKeyId`, `No signing credentials`, 또는 마운트 실패로 Pod가 `ContainerCreating`에서 멈춤.
+
+### 4️⃣ 추론 서버 배포 — `5a` (Operator) 또는 `5b` (Direct)
+
+**왜 두 가지 방식?** "누가 배포를 관리하느냐"의 차이입니다.
+- **🅰️ Operator(`5a`)**: `InferenceEndpointConfig`라는 **설정서(CRD)** 하나만 제출하면, HyperPod **operator**가 Deployment·Service·오토스케일링·TLS를 알아서 만들어 줍니다. (자동화 ↑, 단 operator가 살아 있어야 함)
+- **🅱️ Direct(`5b`)**: operator 없이 **표준 Deployment/Service/PV/PVC를 직접** 정의. operator가 고장나도 동작하고 권한 설정도 단순. (워크샵·임시용)
+
+→ 자세한 비교는 아래 [두 S3 배포 방식의 차이](#-두-s3-배포-방식의-차이-operator-vs-direct) 표 참고.
+
+### 5️⃣ 엔드포인트 호출(테스트) — `6a.create_test_pod.sh`
+
+**왜 클러스터 "안에서" 호출하나?** 추론 Service가 **`ClusterIP` 타입**이라 클러스터 **내부에서만** 접근 가능하기 때문입니다. 외부 IP가 없고(`EXTERNAL-IP <none>`), `*.svc.cluster.local` 주소도 클러스터 내부 DNS만 풀 수 있어서, 내 노트북에서는 그 주소로 바로 호출되지 않습니다. 따라서 호출하려면 둘 중 하나가 필요합니다:
+
+- **① 클러스터 안의 Pod에서 호출** — `6a.create_test_pod.sh`가 띄우는 `test-endpoint` Pod에 `kubectl exec`로 들어가 실행. (`kubectl exec test-endpoint -- ...` 명령은 *이미 떠 있는* 그 Pod 안에서 도는 것입니다.)
+- **② `kubectl port-forward`로 외부에 임시 노출** — 테스트 Pod 없이 내 노트북에서 바로 호출:
+  ```bash
+  kubectl port-forward svc/deepseek15b-fsx-routing-service 8443:443
+  # 다른 터미널에서:
+  curl http://localhost:8443/invocations \
+    -H 'Content-Type: application/json' \
+    -d '{"inputs": "Hi, what can you help me with?"}'
+  ```
+
+> 즉 테스트 Pod는 **유일한 방법이 아니라 가장 간단한 방법 중 하나**입니다. (영구 외부 노출이 필요하면 Service를 LoadBalancer/NodePort로 바꾸거나 Ingress/ALB를 붙입니다.)
+> 호출 시 자주 막히는 부분(포트 443=HTTP, requests 모듈, Service명 사용)은 아래 [트러블슈팅](#트러블슈팅) 참고.
+
+### 🔁 한눈에 보는 흐름
+
+```
+[1] 클러스터 접근 권한      →  kubectl 사용 가능
+        ↓
+[2] 모델을 S3/FSx에 보관    →  큰 가중치를 이미지 밖에 저장
+        ↓
+[3] CSI 드라이버 + 권한      →  Pod가 스토리지를 마운트/다운로드
+        ↓
+[4] 추론 서버 배포          →  GPU Pod에 모델 올려 서빙 (Operator or Direct)
+        ↓
+[5] 테스트 Pod에서 호출      →  /invocations 로 추론 결과 확인
+```
+
+</details>
+
 ## 🚀 빠른 시작 (자동화 스크립트)
 
 ### 1. 클러스터 접근 설정 (../../setup/1.create-config.sh 실행 후 생성되는 env_var의 환경 변수를 로드합니다.)
@@ -41,6 +170,27 @@ kubectl apply -f deploy_S3_inference_operator.yaml
 # 추론 엔드포인트 배포
 kubectl apply -f deploy_S3_direct.yaml
 ```
+
+#### 📌 두 S3 배포 방식의 차이 (Operator vs Direct)
+
+같은 "S3 모델을 GPU로 서빙"이지만, **누가 배포를 관리하고 S3 권한을 어떻게 얻느냐**가 다릅니다.
+
+| 구분 | 🅰️ Operator 방식 (`5a`) | 🅱️ Direct 방식 (`5b`) |
+|---|---|---|
+| **대상** | 정식 AWS 계정 | 워크샵 임시 계정 |
+| **배포 리소스** | `InferenceEndpointConfig` (CRD) — HyperPod **inference operator**가 Deployment/Service/오토스케일링/TLS를 자동 생성 | 표준 **Deployment + Service + PV/PVC**를 직접 정의 |
+| **operator 의존** | **필요** | **불필요** (operator가 없거나 고장나도 동작) |
+| **중간 단계** | `4.fix_s3_csi_credentials.sh` **있음** | **없음** |
+| **S3 접근 권한** | **IRSA** (OIDC 기반, `s3-csi-driver-sa` 서비스어카운트에 IAM Role 연결) | **노드 IAM Role에 `AmazonS3FullAccess`** 부착 |
+| **권한 범위** | 좁음 (해당 버킷, 최소 액션) — 안전 | 넓음 (전체 S3, 노드의 모든 Pod) — 느슨하지만 간편 |
+| **장점** | 안전, 자동화(스케일링/라우팅/TLS) | 빠름, OIDC/IAM 설정 불필요, operator 고장과 무관 |
+| **단점** | 설정 복잡, operator 정상 동작 필요 | 보안 느슨, 수동 관리 |
+
+**한 줄 요약**
+- 🅰️ **Operator** = "정석" — operator에게 맡기고 IRSA로 권한을 좁게. **정식 계정**용.
+- 🅱️ **Direct** = "빠르고 간편하게" — 표준 리소스를 직접 띄우고 노드에 S3 풀권한. **워크샵·임시**용.
+
+> 💡 `kubectl apply` 시 `conversion webhook ... no endpoints available` 에러는 **🅰️ Operator 경로에서만** 발생합니다 (operator가 필수라서). 🅱️ Direct는 operator를 쓰지 않으므로 이 문제가 없습니다 — 워크샵에서 🅱️를 권하는 이유 중 하나입니다. (해결법은 아래 [트러블슈팅](#트러블슈팅) 참고)
 
 ### ⚠️ 리소스 부족 문제 해결
 
@@ -101,6 +251,26 @@ python invoke.py
 > **참고**: `invoke.py` 파일에서 `ENDPOINT_NAME`을 배포한 엔드포인트 이름으로 수정하세요.
 > - FSx 배포: `'deepseek15b-fsx'`
 > - S3 배포: `'deepseek15b'` (또는 사용자 정의 이름)
+
+---
+
+## 📂 스크립트 설명
+
+각 샘플 스크립트가 무엇을 하는지 요약입니다. 번호는 실행 순서를 뜻하며, 같은 번호(`4`, `5a`/`5b`)는 **상황에 따라 택일**합니다.
+
+| 스크립트 | 역할 | 언제 쓰나 |
+|---|---|---|
+| `1.grant_eks_access.sh` | 현재 사용자에게 **EKS 클러스터 접근 권한** 부여 (Access Entry + Admin Policy) 후 kubeconfig 갱신. `env_vars`에서 클러스터명 자동 로드, 없으면 자동 감지. | **항상 먼저** 1회 |
+| `2.prepare_fsx_inference.sh` | **FSx 경로** 준비. AWS 프로파일에서 자격증명을 읽어 모델 복사 Job YAML(`copy_to_fsx_lustre.yaml`)과 추론 배포 YAML을 생성. 인스턴스 타입을 감지해 cpu/memory 요청을 자동 조정. | FSx 기반 배포 시 |
+| `3.copy_to_s3.sh` | **S3 경로** 준비. S3 버킷을 만들고(없으면) JumpStart 캐시에서 **모델을 내 S3 버킷으로 복사**. `S3_BUCKET_NAME`을 설정. | S3 기반 배포 시 (🅰️·🅱️ 공통) |
+| `4.addon_s3_csi.sh` | **S3 CSI 드라이버를 Pod Identity 방식으로 설치**. Pod Identity Agent 애드온 + IAM Role(S3FullAccess) + Pod Identity Association 구성. (`4.fix...`의 대안 설치 경로) | S3 CSI가 아예 없을 때 |
+| `4.fix_s3_csi_credentials.sh` | **S3 CSI 드라이버 자격증명 문제 해결**. CSI 드라이버 상태 점검 후 필요 시 재설치하고, **IRSA(OIDC)** 기반 IAM Role을 만들어 `s3-csi-driver-sa`에 연결. | 🅰️ Operator 경로 (정식 계정) |
+| `5a.prepare_s3_inference_operator.sh` | 🅰️ **Operator 방식** 배포 YAML(`deploy_S3_inference_operator.yaml`) 생성. `InferenceEndpointConfig`(CRD)를 만들어 operator가 배포를 관리. 인스턴스 타입/버킷/리전 자동 치환. | 🅰️ 정식 계정 |
+| `5b.prepare_s3_direct_deploy.sh` | 🅱️ **Direct 방식** 배포 YAML(`deploy_S3_direct.yaml`) 생성. 표준 Deployment+Service+PV/PVC를 직접 정의하고, **노드 IAM Role에 S3FullAccess**를 붙여 operator 없이 배포. | 🅱️ 워크샵 임시 계정 |
+| `6a.create_test_pod.sh` | **테스트용 Pod**(`test-endpoint`, python:3.11-slim + requests) 생성 후, 배포된 추론 엔드포인트 목록을 보여주고 호출 명령을 안내. | 배포 후 테스트 시 |
+
+> **🅰️ Operator vs 🅱️ Direct 차이**는 위 [두 S3 배포 방식의 차이](#-두-s3-배포-방식의-차이-operator-vs-direct) 표를 참고하세요.
+> 두 `4.*` 스크립트는 **S3 CSI 권한을 얻는 방식이 다릅니다**: `4.addon_s3_csi.sh`는 **Pod Identity**, `4.fix_s3_csi_credentials.sh`는 **IRSA(OIDC)** 기반입니다.
 
 ---
 
@@ -375,6 +545,23 @@ kubectl get svc
 ---
 
 ## Endpoint 테스트
+
+추론 Service는 **`ClusterIP` 타입**(클러스터 내부 전용)이라 호출 방법이 두 가지입니다:
+
+- **방법 A — 클러스터 안의 테스트 Pod에서 호출** (아래 Step 1~6). 별도 도구 없이 `kubectl`만으로 됩니다.
+- **방법 B — `kubectl port-forward`로 내 노트북에서 직접 호출** (테스트 Pod 불필요):
+  ```bash
+  # 한 터미널: 로컬 8443 → Service 443 터널 (켜 두는 동안 유지)
+  kubectl port-forward svc/deepseek15b-fsx-routing-service 8443:443
+
+  # 다른 터미널: 내 노트북에서 바로 호출
+  curl http://localhost:8443/invocations \
+    -H 'Content-Type: application/json' \
+    -d '{"inputs": "Hi, what can you help me with?"}'
+  ```
+  > S3 배포면 Service 이름을 `deepseek15b-routing-service`로 바꾸세요. (port-forward는 평문 HTTP로 터널되므로 `http://localhost:8443` 사용)
+
+아래는 **방법 A**(테스트 Pod) 절차입니다.
 
 ### Step 1: 테스트용 Pod 생성
 
